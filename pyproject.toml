@@ -1,0 +1,20 @@
+[project]
+name = "office-automation"
+version = "1.0.0"
+description = "自动化办公水印接口"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "Pillow",
+    "pymupdf",
+    "python-docx",
+    "pydantic-settings",
+    "py7zr"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

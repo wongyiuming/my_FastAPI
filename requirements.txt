@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+Pillow
+pymupdf
+python-docx
+pydantic-settings
+py7zr
