@@ -1,0 +1,34 @@
+# Python 自动生成的缓存和字节码
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 你提到的项目管理组件（必须屏蔽）
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE 配置文件
+.idea/
+.vscode/
+
+# 本地测试产物
+*.zip
+*.7z
+marked_*
+
+# 环境变量敏感文件
+.env
