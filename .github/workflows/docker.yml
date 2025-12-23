@@ -1,0 +1,38 @@
+# .github/workflows/docker.yml
+name: Build and Test Docker Image
+
+on:
+  push:
+    branches: [ "feat/docker-deploy" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t my-fastapi .
+
+      - name: Run container in background
+        run: |
+          docker run -d --name fastapi-test -p 8000:8000 my-fastapi
+
+      - name: Wait for service to start
+        run: |
+          sleep 5
+
+      - name: Test API endpoint
+        run: |
+          curl --fail http://localhost:8000/docs || exit 1
+
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker stop fastapi-test || true
+          docker rm fastapi-test || true
