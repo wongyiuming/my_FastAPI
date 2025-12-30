@@ -1,5 +1,4 @@
-# .github/workflows/docker.yml
-name: Build and Test Docker Image
+name: Build and Test Docker Compose
 
 on:
   push:
@@ -8,31 +7,51 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      # 1. 模拟证书环境：CI 环境没有真实证书，必须创建自签名证书骗过 Nginx 启动检查
+      - name: Create Dummy Certificates for Testing
         run: |
-          docker build -t my-fastapi .
+          mkdir -p certs
+          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout certs/privkey.pem \
+            -out certs/fullchain.pem \
+            -subj "/C=CN/ST=Default/L=Default/O=Default/CN=localhost"
 
-      - name: Run container in background
+      # 2. 启动服务：注入 NGINX_HOST 变量并启动 compose
+      - name: Build and Start Services
+        env:
+          NGINX_HOST: localhost
         run: |
-          docker run -d --name fastapi-test -p 8000:8000 my-fastapi
+          # 显式指定环境变量并运行
+          docker compose up -d --build
 
-      - name: Wait for service to start
+      # 3. 等待服务就绪：Nginx 启动比 FastAPI 快，需要预留渲染和启动时间
+      - name: Wait for Services
         run: |
-          sleep 5
+          sleep 10
+          docker compose ps
 
-      - name: Test API endpoint
+      # 4. 验证 HTTPS 功能
+      - name: Test HTTPS Endpoint
         run: |
-          curl --fail http://localhost:8000/docs || exit 1
+          # -k 表示忽略自签名证书的警告，-L 跟踪重定向（验证 80 是否跳到 443）
+          curl -k -L --fail http://localhost/docs || exit 1
 
-      - name: Stop and remove container
+      # 5. 故障排查：如果失败，打印 Nginx 和 FastAPI 日志
+      - name: View logs on failure
+        if: failure()
+        run: |
+          docker compose logs nginx
+          docker compose logs fastapi_app
+
+      # 6. 清理现场
+      - name: Stop and Cleanup
         if: always()
         run: |
-          docker stop fastapi-test || true
-          docker rm fastapi-test || true
+          docker compose down --volumes --remove-orphans

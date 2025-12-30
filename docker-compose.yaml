@@ -3,14 +3,24 @@ services:
     build: .
     container_name: fastapi_server
     expose:
-      - "8000" # 仅对内部网络开放
+      - "8000"
+    restart: always
 
   nginx:
     image: nginx:alpine
     container_name: nginx_proxy
     ports:
-      - "80:80" # 对外暴露 80 端口
+      - "80:80"
+      - "443:443" # 【关键】必须暴露 443 端口
+    environment:
+      - NGINX_HOST=example.com # 【关键】在这里定义你的域名，对应模板里的变量
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # 【关键】挂载到 templates 目录，而不是 conf.d
+      - ./nginx/templates:/etc/nginx/templates:ro
+      # 【建议】如果修改了全局 nginx.conf，也需要挂载
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # 【关键】挂载证书目录，确保容器内能找到 /etc/nginx/certs/fullchain.pem
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - fastapi_app
+    restart: always
