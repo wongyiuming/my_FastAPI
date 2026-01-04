@@ -12,7 +12,8 @@ dependencies = [
     "pymupdf",
     "python-docx",
     "pydantic-settings",
-    "py7zr"
+    "py7zr",
+    "redis"
 ]
 
 [build-system]

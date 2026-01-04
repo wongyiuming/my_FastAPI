@@ -6,3 +6,4 @@ pymupdf
 python-docx
 pydantic-settings
 py7zr
+redis

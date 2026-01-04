@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 模拟证书环境：CI 环境没有真实证书，必须创建自签名证书骗过 Nginx 启动检查
+      # 1. 模拟证书环境
       - name: Create Dummy Certificates for Testing
         run: |
           mkdir -p certs
@@ -23,34 +23,58 @@ jobs:
             -out certs/fullchain.pem \
             -subj "/C=CN/ST=Default/L=Default/O=Default/CN=localhost"
 
-      # 2. 启动服务：注入 NGINX_HOST 变量并启动 compose
+      # 2. 启动服务：关键点在于注入匿名墙所需的业务变量
       - name: Build and Start Services
         env:
           NGINX_HOST: localhost
+          # CI 环境下，web 容器连接 redis 容器使用 docker-compose 的服务名
+          REDIS_URL: redis://redis:6379/0
+          WALL_ADMIN_TOKEN: ci_test_token
+          WALL_TTL: 240
         run: |
-          # 显式指定环境变量并运行
+          # 显式注入变量启动，确保 fastapi_app 能识别 Redis
           docker compose up -d --build
 
-      # 3. 等待服务就绪：Nginx 启动比 FastAPI 快，需要预留渲染和启动时间
+      # 3. 等待服务就绪
       - name: Wait for Services
         run: |
-          sleep 10
+          # 增加到 15s 确保 Redis 和异步连接池完全初始化
+          sleep 15
           docker compose ps
 
-      # 4. 验证 HTTPS 功能
-      - name: Test HTTPS Endpoint
+      # 4. 验证核心功能
+      - name: Test Endpoints
         run: |
-          # -k 表示忽略自签名证书的警告，-L 跟踪重定向（验证 80 是否跳到 443）
+          # A. 验证原本的 Swagger 文档和 HTTPS 跳转
           curl -k -L --fail http://localhost/docs || exit 1
+          
+          # B. 验证匿名墙静态页面是否可访问
+          curl -k -L --fail http://localhost/wall/index.html || exit 1
+          
+          # C. 验证匿名墙 API：尝试发布一条测试内容并检查返回
+          # 使用 curl 调用 POST 接口，验证后端与 Redis 的写操作
+          POST_RES=$(curl -k -X POST "http://localhost/api/v1/wall/publish?content=CI_Integration_Test")
+          echo "Post Result: $POST_RES"
+          if [[ "$POST_RES" != *"CI_Integration_Test"* ]]; then
+            echo "API Validation Failed: Content not found in response"
+            exit 1
+          fi
 
-      # 5. 故障排查：如果失败，打印 Nginx 和 FastAPI 日志
+      # 5. 验证 Redis 数据持久化（可选）
+      - name: Verify Redis Persistence
+        run: |
+          # 在容器外部通过 docker exec 确认 Key 是否真实存在
+          docker exec $(docker ps -q -f name=redis) redis-cli keys "wall:post:*" | grep "wall:post"
+
+      # 6. 故障排查
       - name: View logs on failure
         if: failure()
         run: |
           docker compose logs nginx
           docker compose logs fastapi_app
+          docker compose logs redis
 
-      # 6. 清理现场
+      # 7. 清理现场
       - name: Stop and Cleanup
         if: always()
         run: |
