@@ -1,12 +1,13 @@
-# 定义后端服务组，对接 Docker 内部服务名
+# 定义后端服务组，必须对接 Docker Compose 中的服务名 'web'
 upstream fastapi_backend {
-    server fastapi_app:8000;
+    server web:8000;
     keepalive 32;
 }
 
 server {
     listen 80;
     server_name ${NGINX_HOST};
+    # 强制跳转 HTTPS
     return 301 https://$host$request_uri;
 }
 
@@ -22,35 +23,35 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
-    # 1. 匿名墙静态前端 (新增)
+    # 1. 匿名墙静态前端
     location /wall {
         alias /usr/share/nginx/html/wall;
         index index.html;
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ /wall/index.html;
     }
 
-    # 2. 根路径逻辑：保持原有重定向至 /docs
+    # 2. 根路径重定向
     location = / {
         return 301 $scheme://$host/docs;
     }
 
-    # 3. 业务 API 反向代理 (包含旧水印服务与新匿名墙 API)
+    # 3. 业务 API 反向代理
     location / {
+        # 使用上面定义的 upstream 名称
         proxy_pass http://fastapi_backend;
 
-        # 核心 Header，必须包含 X-Real-IP 以供后端限速
+        # 核心 Header，供后端获取真实 IP
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket 与长连接优化
+        # 连接优化
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
 
         proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
 }

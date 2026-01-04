@@ -1,7 +1,7 @@
+version: '3.8'
+
 services:
-  # -----------------------
-  # 1. FastAPI 核心服务
-  # -----------------------
+  # 后端服务
   web:
     build: .
     container_name: office_automation_web
@@ -10,24 +10,18 @@ services:
     depends_on:
       - redis
     volumes:
-      # 开发模式挂载代码，生产环境可去掉
       - ./app:/app/app
 
-  # -----------------------
-  # 2. Redis 缓存服务 (新增)
-  # -----------------------
+  # Redis 服务
   redis:
     image: redis:7-alpine
     container_name: office_automation_redis
     restart: always
-    # 简单的持久化，防止意外重启丢失还没过期的帖子
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
 
-  # -----------------------
-  # 3. Nginx 网关服务
-  # -----------------------
+  # Nginx 服务
   nginx:
     image: nginx:alpine
     container_name: office_automation_nginx
@@ -36,16 +30,11 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # 替换为你的真实域名或 IP
       - NGINX_HOST=${NGINX_HOST:-localhost}
     volumes:
-      # 1. 挂载主配置文件
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      # 2. 挂载模板文件 (nginx 容器启动时会自动替换 env 变量并生成 conf.d/default.conf)
       - ./nginx/templates:/etc/nginx/templates
-      # 3. 挂载 SSL 证书
       - ./certs:/etc/nginx/certs
-      # 4. 挂载前端静态页面 (确保你的 index.html 在 app/static 目录下)
       - ./app/static:/usr/share/nginx/html/wall
     depends_on:
       - web
