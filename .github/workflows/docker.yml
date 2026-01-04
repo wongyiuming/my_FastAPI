@@ -1,5 +1,4 @@
-# .github/workflows/docker.yml
-name: Build and Test Docker Image
+name: Build and Test Docker Compose
 
 on:
   push:
@@ -8,31 +7,72 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      # 1. 模拟证书环境
+      - name: Create Dummy Certificates for Testing
         run: |
-          docker build -t my-fastapi .
+          mkdir -p certs
+          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout certs/privkey.pem \
+            -out certs/fullchain.pem \
+            -subj "/C=CN/ST=Default/L=Default/O=Default/CN=localhost"
 
-      - name: Run container in background
+      # 2. 启动服务
+      - name: Build and Start Services
+        env:
+          NGINX_HOST: localhost
+          REDIS_URL: redis://redis:6379/0
+          WALL_ADMIN_TOKEN: ci_test_token
+          WALL_TTL: 240
         run: |
-          docker run -d --name fastapi-test -p 8000:8000 my-fastapi
+          docker compose up -d --build
 
-      - name: Wait for service to start
+      # 3. 等待服务就绪
+      - name: Wait for Services
         run: |
-          sleep 5
+          sleep 15
+          docker compose ps
 
-      - name: Test API endpoint
+      # 4. 验证核心功能
+      - name: Test Endpoints
         run: |
-          curl --fail http://localhost:8000/docs || exit 1
+          # A. 验证 Swagger (注意：由于 Nginx 配置了跳转，这里需要 -L)
+          curl -k -L --fail http://localhost/docs || exit 1
+          
+          # B. 验证匿名墙静态页面
+          curl -k -L --fail http://localhost/wall/index.html || exit 1
+          
+          # C. 验证匿名墙 API
+          # 注意：POST 结果应该包含发送的字符串
+          POST_RES=$(curl -k -L -X POST "http://localhost/api/v1/wall/publish?content=CI_Integration_Test")
+          echo "Post Result: $POST_RES"
+          if [[ "$POST_RES" != *"CI_Integration_Test"* ]]; then
+            echo "API Validation Failed: Content not found in response"
+            exit 1
+          fi
 
-      - name: Stop and remove container
+      # 5. 验证 Redis 数据持久化
+      - name: Verify Redis Persistence
+        run: |
+          # 使用服务名 redis 获取容器 ID
+          docker exec $(docker compose ps -q redis) redis-cli keys "wall:post:*" | grep "wall:post"
+
+      # 6. 故障排查 (此处已修正服务名)
+      - name: View logs on failure
+        if: failure()
+        run: |
+          docker compose logs nginx
+          docker compose logs web
+          docker compose logs redis
+
+      # 7. 清理现场
+      - name: Stop and Cleanup
         if: always()
         run: |
-          docker stop fastapi-test || true
-          docker rm fastapi-test || true
+          docker compose down --volumes --remove-orphans

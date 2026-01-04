@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  web:
+    build: .
+    container_name: office_automation_web
+    restart: always
+    env_file: .env
+    depends_on:
+      - redis
+    volumes:
+      - ./app:/app/app
+
+  # Redis 服务
+  redis:
+    image: redis:7-alpine
+    container_name: office_automation_redis
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Nginx 服务
+  nginx:
+    image: nginx:alpine
+    container_name: office_automation_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - NGINX_HOST=${NGINX_HOST:-localhost}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/templates:/etc/nginx/templates
+      - ./certs:/etc/nginx/certs
+      - ./app/static:/usr/share/nginx/html/wall
+    depends_on:
+      - web
+
+volumes:
+  redis_data:

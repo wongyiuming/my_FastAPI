@@ -1,11 +1,17 @@
-from fastapi import APIRouter, UploadFile, File, Response, Query
-from typing import List
 import io
 import zipfile
-from app.core import utils
 from datetime import datetime
+from typing import List
+
+from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import UploadFile, File, Response, Query
+
+from app.core import utils
+from app.api.v1.wall import router as wall_router
 
 router = APIRouter()
+
+router.include_router(wall_router, prefix="/wall", tags=["AnonymousWall"])
 
 # 统一支持的压缩格式列表
 ARCHIVE_EXTS = ('.zip', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tgz')
@@ -15,6 +21,7 @@ ARCHIVE_EXTS = ('.zip', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tgz')
 async def health_check():
     """K8s 存活探针使用的接口"""
     return {"status": "healthy", "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
 
 @router.post("/watermark")
 async def apply_watermark(

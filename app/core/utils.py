@@ -87,20 +87,63 @@ def process_single_image(content: bytes, text: str) -> bytes:
         return content
 
 
-# --- 2. PDF 处理器 ---
-def process_single_pdf(content: bytes, text: str) -> bytes:
+def create_watermark_layer(width, height, text):
+    """
+    生成一个与 PDF 页面同尺寸的透明水印层
+    """
+    # 逻辑同你之前的代码，生成 45 度平铺水印
+    # full_text = f"{text} {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    full_text = text
+
+    # 为了覆盖全页面且支持旋转，创建 2 倍大小画布
+    overlay_size = max(width, height) * 2
+    overlay = Image.new("RGBA", (overlay_size, overlay_size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # 计算字号和步进 (参考你之前的逻辑)
+    font_size = max(int(overlay_size / 80), 15)
     try:
-        doc = fitz.open(stream=content, filetype="pdf")
-        mark_text = f"{text} {datetime.now().strftime('%Y-%m-%d')}"
+        font = ImageFont.truetype("arial.ttf", font_size)  # 确保路径正确
+    except:
+        font = ImageFont.load_default()
+
+    # 简单平铺绘制
+    for x in range(0, overlay_size, font_size * 10):
+        for y in range(0, overlay_size, font_size * 5):
+            draw.text((x, y), full_text, fill=(255, 215, 0, 100), font=font)
+
+    # 旋转并裁剪
+    overlay = overlay.rotate(45, resample=Image.BICUBIC)
+
+    # 截取中心部分以匹配 PDF 页面
+    left = (overlay_size - width) // 2
+    top = (overlay_size - height) // 2
+    return overlay.crop((left, top, left + width, top + height))
+
+
+def process_single_pdf(pdf_bytes: bytes, text: str) -> bytes:
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
         for page in doc:
-            w, h = page.rect.width, page.rect.height
-            page.insert_text(
-                (w / 4, h / 2), mark_text, fontsize=20,
-                color=(1, 0.8, 0), fill_opacity=0.4, rotate=45
-            )
+            # 获取 PDF 页面宽高 (Point 单位)
+            rect = page.rect
+            w, h = int(rect.width), int(rect.height)
+
+            # 1. 生成旋转后的水印图
+            watermark_img = create_watermark_layer(w, h, text)
+
+            # 2. 转为 bytes 供 PDF 插入
+            img_byte_arr = io.BytesIO()
+            watermark_img.save(img_byte_arr, format="PNG")
+
+            # 3. 插入到 PDF 页面 (overlay=True 表示在文字上方)
+            page.insert_image(rect, stream=img_byte_arr.getvalue(), overlay=True)
+
         return doc.write()
-    except Exception:
-        return content
+    except Exception as e:
+        print(f"PDF processing failed: {e}")
+        return pdf_bytes
 
 
 # --- 3. Word 处理器 ---
