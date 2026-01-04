@@ -23,55 +23,52 @@ jobs:
             -out certs/fullchain.pem \
             -subj "/C=CN/ST=Default/L=Default/O=Default/CN=localhost"
 
-      # 2. 启动服务：关键点在于注入匿名墙所需的业务变量
+      # 2. 启动服务
       - name: Build and Start Services
         env:
           NGINX_HOST: localhost
-          # CI 环境下，web 容器连接 redis 容器使用 docker-compose 的服务名
           REDIS_URL: redis://redis:6379/0
           WALL_ADMIN_TOKEN: ci_test_token
           WALL_TTL: 240
         run: |
-          # 显式注入变量启动，确保 fastapi_app 能识别 Redis
           docker compose up -d --build
 
       # 3. 等待服务就绪
       - name: Wait for Services
         run: |
-          # 增加到 15s 确保 Redis 和异步连接池完全初始化
           sleep 15
           docker compose ps
 
       # 4. 验证核心功能
       - name: Test Endpoints
         run: |
-          # A. 验证原本的 Swagger 文档和 HTTPS 跳转
+          # A. 验证 Swagger (注意：由于 Nginx 配置了跳转，这里需要 -L)
           curl -k -L --fail http://localhost/docs || exit 1
           
-          # B. 验证匿名墙静态页面是否可访问
+          # B. 验证匿名墙静态页面
           curl -k -L --fail http://localhost/wall/index.html || exit 1
           
-          # C. 验证匿名墙 API：尝试发布一条测试内容并检查返回
-          # 使用 curl 调用 POST 接口，验证后端与 Redis 的写操作
-          POST_RES=$(curl -k -X POST "http://localhost/api/v1/wall/publish?content=CI_Integration_Test")
+          # C. 验证匿名墙 API
+          # 注意：POST 结果应该包含发送的字符串
+          POST_RES=$(curl -k -L -X POST "http://localhost/api/v1/wall/publish?content=CI_Integration_Test")
           echo "Post Result: $POST_RES"
           if [[ "$POST_RES" != *"CI_Integration_Test"* ]]; then
             echo "API Validation Failed: Content not found in response"
             exit 1
           fi
 
-      # 5. 验证 Redis 数据持久化（可选）
+      # 5. 验证 Redis 数据持久化
       - name: Verify Redis Persistence
         run: |
-          # 在容器外部通过 docker exec 确认 Key 是否真实存在
-          docker exec $(docker ps -q -f name=redis) redis-cli keys "wall:post:*" | grep "wall:post"
+          # 使用服务名 redis 获取容器 ID
+          docker exec $(docker compose ps -q redis) redis-cli keys "wall:post:*" | grep "wall:post"
 
-      # 6. 故障排查
+      # 6. 故障排查 (此处已修正服务名)
       - name: View logs on failure
         if: failure()
         run: |
           docker compose logs nginx
-          docker compose logs fastapi_app
+          docker compose logs web
           docker compose logs redis
 
       # 7. 清理现场
