@@ -2,7 +2,7 @@ name: Build and Test Docker Compose
 
 on:
   push:
-    branches: [ "feat/docker-deploy" ]
+    branches: [ "feat/docker-deploy", "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -13,6 +13,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # 0. 关键步骤：创建 .env 文件，防止 Docker Compose 报错
+      # 直接将 example 拷贝为 .env 即可满足 Compose 的文件存在性检查
+      - name: Create .env file from template
+        run: cp .env.example .env
 
       # 1. 模拟证书环境
       - name: Create Dummy Certificates for Testing
@@ -26,6 +31,7 @@ jobs:
       # 2. 启动服务
       - name: Build and Start Services
         env:
+          # 虽然有了 .env，但这里的 env 优先级更高，会覆盖 .env 中的同名变量
           NGINX_HOST: localhost
           REDIS_URL: redis://redis:6379/0
           WALL_ADMIN_TOKEN: ci_test_token
@@ -63,7 +69,7 @@ jobs:
           # 使用服务名 redis 获取容器 ID
           docker exec $(docker compose ps -q redis) redis-cli keys "wall:post:*" | grep "wall:post"
 
-      # 6. 故障排查 (此处已修正服务名)
+      # 6. 故障排查
       - name: View logs on failure
         if: failure()
         run: |
