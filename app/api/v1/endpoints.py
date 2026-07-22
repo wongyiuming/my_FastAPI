@@ -8,10 +8,12 @@ from fastapi import UploadFile, File, Response, Query
 
 from app.core import utils
 from app.api.v1.wall import router as wall_router
+from app.api.v1.media import router as media_router
 
 router = APIRouter()
 
 router.include_router(wall_router, prefix="/wall", tags=["AnonymousWall"])
+router.include_router(media_router, prefix="/media", tags=["MediaCenter"])
 
 # 统一支持的压缩格式列表
 ARCHIVE_EXTS = ('.zip', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tgz')
