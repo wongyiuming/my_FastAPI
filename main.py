@@ -12,16 +12,14 @@ app = FastAPI(title="Office Automation Service")
 app.include_router(api_v1_router, prefix="/api/v1")
 
 # 2. 计算并挂载媒体文件目录（供音视频播放器读取）
-if not sys.platform.startswith("win"):
-    MEDIA_DIR = "/data/media"
-else:
-    MEDIA_DIR = os.path.join(os.getcwd(), "data", "media")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 
 os.makedirs(MEDIA_DIR, exist_ok=True)
 app.mount("/static/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 # 3. 原有静态资源处理
-static_path = os.path.join(os.getcwd(), "app", "static")
+static_path = os.path.join(BASE_DIR, "app", "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 

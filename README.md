@@ -31,7 +31,6 @@ docker compose up -d
 参考 `.env.example` 进行配置。
 
 ```bash
-touch .env
 nano .env
 ```
 

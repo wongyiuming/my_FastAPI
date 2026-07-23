@@ -7,12 +7,9 @@ from fastapi.responses import HTMLResponse
 router = APIRouter()
 
 # ----------------- 环境与路径初始化 -----------------
-if sys.platform.startswith("win"):
-    # app/api/v1/media.py -> 向上退4层到达项目根目录
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
-else:
-    MEDIA_DIR = "/data/media"
+# 自动定位项目根目录 (app/api/v1/media.py 向上退4层到达项目根目录)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
