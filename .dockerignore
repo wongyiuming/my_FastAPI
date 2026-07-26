@@ -6,6 +6,7 @@
 .venv
 venv
 ENV
+data
 
 # 排除 Python 字节码
 __pycache__

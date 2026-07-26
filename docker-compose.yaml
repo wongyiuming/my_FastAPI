@@ -11,6 +11,7 @@ services:
       - redis
     volumes:
       - ./app:/app/app
+      - ./data:/app/data
 
   # Redis 服务
   redis:
