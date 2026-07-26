@@ -24,7 +24,7 @@
 ```bash
 git clone [https://github.com/wongyiuming/my_FastAPI.git](https://github.com/wongyiuming/my_FastAPI.git)
 cd my_FastAPI
-docker compose up -d
+docker compose down && docker compose up -d --build
 ```
 
 2环境变量

@@ -1,7 +1,8 @@
 import os
 import sys
+from pathlib import Path
 import json
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
 router = APIRouter()
@@ -9,7 +10,8 @@ router = APIRouter()
 # ----------------- 环境与路径初始化 -----------------
 # 自动定位项目根目录 (app/api/v1/media.py 向上退4层到达项目根目录)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MEDIA_DIR = str(Path(__file__).resolve().parents[3] / "data" / "media")
 
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
@@ -17,22 +19,52 @@ AUDIO_EXTS = ('.mp3', '.m4a', '.flac', '.wav')
 VIDEO_EXTS = ('.mp4', '.webm', '.mkv')
 
 
-def scan_media_files(valid_exts, media_type):
-    """扫描指定扩展名的媒体文件"""
-    media_list = []
-    for root, dirs, files in os.walk(MEDIA_DIR):
-        for file in files:
-            if file.lower().endswith(valid_exts):
-                relative_path = os.path.relpath(os.path.join(root, file), MEDIA_DIR)
-                url_friendly_path = relative_path.replace(chr(92), '/')
+def get_media_categories(media_type, valid_exts):
+    """获取指定媒体类型下的分类目录列表"""
+    categories = []
+    if not os.path.exists(MEDIA_DIR):
+        return categories
 
-                media_list.append({
-                    "title": os.path.splitext(file)[0],
-                    "artist": "私有云端",
-                    "type": media_type,
-                    "url": f"/static/media/{url_friendly_path}",
-                    "cover": "https://api.dujin.org/pic/"
+    # 扫描 MEDIA_DIR 下的一级子目录作为分类
+    for entry in sorted(os.listdir(MEDIA_DIR)):
+        full_path = os.path.join(MEDIA_DIR, entry)
+        if os.path.isdir(full_path):
+            # 检查该目录下是否有符合条件的媒体文件
+            has_files = False
+            for root, dirs, files in os.walk(full_path):
+                if any(f.lower().endswith(valid_exts) for f in files):
+                    has_files = True
+                    break
+            if has_files:
+                categories.append({
+                    "name": entry,
+                    "url": f"/api/v1/media/{media_type}/category?path={entry}"
                 })
+    return categories
+
+
+def scan_media_files_by_category(category_subpath, valid_exts, media_type):
+    """扫描指定子分类目录下的媒体文件"""
+    target_dir = os.path.normpath(os.path.join(MEDIA_DIR, category_subpath))
+    # 安全检查，防止路径穿越
+    if not target_dir.startswith(os.path.normpath(MEDIA_DIR)):
+        return []
+
+    media_list = []
+    if os.path.exists(target_dir):
+        for root, dirs, files in os.walk(target_dir):
+            for file in files:
+                if file.lower().endswith(valid_exts):
+                    relative_path = os.path.relpath(os.path.join(root, file), MEDIA_DIR)
+                    url_friendly_path = relative_path.replace(chr(92), '/')
+
+                    media_list.append({
+                        "title": os.path.splitext(file)[0],
+                        "artist": "私有云端",
+                        "type": media_type,
+                        "url": f"/static/media/{url_friendly_path}",
+                        "cover": "https://api.dujin.org/pic/"
+                    })
     return media_list
 
 
@@ -65,11 +97,11 @@ def get_media_index_page():
             <div class="card-grid">
                 <a href="/api/v1/media/music" class="card">
                     <div class="card-icon">🎵</div>
-                    <div class="card-title">音频播放</div>
+                    <div class="card-title">音频分类</div>
                 </a>
                 <a href="/api/v1/media/video" class="card">
                     <div class="card-icon">🎬</div>
-                    <div class="card-title">视频播放</div>
+                    <div class="card-title">视频分类</div>
                 </a>
             </div>
         </div>
@@ -79,8 +111,91 @@ def get_media_index_page():
     return html_content
 
 
+# ----------------- 路由 2: 音频分类列表页 (/media/music) -----------------
+@router.get("/music", response_class=HTMLResponse)
+def get_music_categories_page():
+    categories = get_media_categories("music", AUDIO_EXTS)
+    return generate_category_list_html(categories, "音频分类目录", "/api/v1/media/music")
+
+
+# ----------------- 路由 3: 视频分类列表页 (/media/video) -----------------
+@router.get("/video", response_class=HTMLResponse)
+def get_video_categories_page():
+    categories = get_media_categories("video", VIDEO_EXTS)
+    return generate_category_list_html(categories, "视频分类目录", "/api/v1/media/video")
+
+
+# ----------------- 路由 4: 音频播放页面（带分类） -----------------
+@router.get("/music/category", response_class=HTMLResponse)
+def get_music_player_page(path: str = Query(...)):
+    media_list = scan_media_files_by_category(path, AUDIO_EXTS, "audio")
+    return generate_player_html(media_list, f"音乐播放 - {path}", "/api/v1/media/music")
+
+
+# ----------------- 路由 5: 视频播放页面（带分类） -----------------
+@router.get("/video/category", response_class=HTMLResponse)
+def get_video_player_page(path: str = Query(...)):
+    media_list = scan_media_files_by_category(path, VIDEO_EXTS, "video")
+    return generate_player_html(media_list, f"视频播放 - {path}", "/api/v1/media/video")
+
+
+# ----------------- 分类目录选择页面模板函数 -----------------
+def generate_category_list_html(categories, page_title, back_url):
+    categories_json = json.dumps(categories, ensure_ascii=False)
+    return f"""
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{page_title}</title>
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{ background: #121212; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }}
+            .container {{ text-align: center; max-width: 600px; width: 90%; }}
+            .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }}
+            h1 {{ font-size: 1.75rem; color: #f5f5f5; }}
+            .back-btn {{ color: #888; text-decoration: none; font-size: 14px; }}
+            .back-btn:hover {{ color: #fff; }}
+            .card-grid {{ display: flex; flex-direction: column; gap: 15px; }}
+            .card {{ background: #1e1e1e; border: 1px solid #2d2d2d; border-radius: 10px; padding: 20px; text-decoration: none; color: #fff; display: flex; align-items: center; justify-content: space-between; transition: background 0.2s; }}
+            .card:hover {{ background: #282828; }}
+            .card-title {{ font-size: 1.1rem; font-weight: bold; }}
+            .card-arrow {{ color: #666; font-size: 1.2rem; }}
+            .empty {{ color: #666; padding: 40px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>{page_title}</h1>
+                <a href="/api/v1/media" class="back-btn">← 返回首页</a>
+            </div>
+            <div id="categoryGrid" class="card-grid"></div>
+        </div>
+        <script>
+            const categories = {categories_json};
+            window.addEventListener('DOMContentLoaded', () => {{
+                const grid = document.getElementById('categoryGrid');
+                if (categories.length === 0) {{
+                    grid.innerHTML = '<div class="empty">暂无分类目录，请在 data/media 下创建子文件夹</div>';
+                    return;
+                }}
+                grid.innerHTML = categories.map(cat => `
+                    <a href="${{cat.url}}" class="card">
+                        <div class="card-title">📁 ${{cat.name}}</div>
+                        <div class="card-arrow">→</div>
+                    </a>
+                `).join('');
+            }});
+        </script>
+    </body>
+    </html>
+    """
+
+
 # ----------------- 通用播放器模板函数 -----------------
-def generate_player_html(media_list, page_title):
+def generate_player_html(media_list, page_title, category_list_url):
     media_json_str = json.dumps(media_list, ensure_ascii=False)
     return f"""
     <!DOCTYPE html>
@@ -100,9 +215,12 @@ def generate_player_html(media_list, page_title):
             .rotate-disk {{ animation: rotate 20s linear infinite; }}
             @keyframes rotate {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
             .sidebar {{ flex: 1; min-width: 280px; background: #181818; border-left: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; }}
-            .sidebar-header {{ padding: 20px; font-size: 18px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }}
+            .sidebar-header {{ padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }}
             .back-btn {{ color: #888; text-decoration: none; font-size: 14px; }}
             .back-btn:hover {{ color: #fff; }}
+            .player-controls {{ padding: 12px 15px; background: #1f1f1f; display: flex; gap: 10px; border-bottom: 1px solid #282828; }}
+            .control-btn {{ flex: 1; background: #2a2a2a; color: #fff; border: 1px solid #3a3a3a; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-align: center; transition: background 0.2s; user-select: none; }}
+            .control-btn:hover {{ background: #3a3a3a; }}
             .media-list {{ flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; -webkit-overflow-scrolling: touch; touch-action: pan-y; }}
             .media-item {{ display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #222; cursor: pointer; transition: background 0.2s; user-select: none; }}
             .media-item:hover {{ background: #282828; }}
@@ -123,8 +241,12 @@ def generate_player_html(media_list, page_title):
         </div>
         <div class="sidebar">
             <div class="sidebar-header">
-                <span>{page_title}</span>
-                <a href="/api/v1/media" class="back-btn">← 返回首页</a>
+                <span>播放列表</span>
+                <a href="{category_list_url}" class="back-btn">← 返回分类</a>
+            </div>
+            <div class="player-controls">
+                <button class="control-btn" onclick="playPrev()">⏮ 上一首</button>
+                <button class="control-btn" onclick="playNext()">下一首 ⏭</button>
             </div>
             <ul id="mediaList" class="media-list"></ul>
         </div>
@@ -135,7 +257,6 @@ def generate_player_html(media_list, page_title):
             let currentIndex = 0;
             const currentMediaList = {media_json_str};
 
-            // 注册 MediaSession 向特斯拉 OS 汇报曲目元数据并接收硬件按键
             function updateMediaSession(media) {{
                 if ('mediaSession' in navigator) {{
                     navigator.mediaSession.metadata = new MediaMetadata({{
@@ -147,18 +268,10 @@ def generate_player_html(media_list, page_title):
                         ]
                     }});
 
-                    navigator.mediaSession.setActionHandler('play', () => {{
-                        if (art) art.play();
-                    }});
-                    navigator.mediaSession.setActionHandler('pause', () => {{
-                        if (art) art.pause();
-                    }});
-                    navigator.mediaSession.setActionHandler('previoustrack', () => {{
-                        playPrev();
-                    }});
-                    navigator.mediaSession.setActionHandler('nexttrack', () => {{
-                        playNext();
-                    }});
+                    navigator.mediaSession.setActionHandler('play', () => {{ if (art) art.play(); }});
+                    navigator.mediaSession.setActionHandler('pause', () => {{ if (art) art.pause(); }});
+                    navigator.mediaSession.setActionHandler('previoustrack', () => {{ playPrev(); }});
+                    navigator.mediaSession.setActionHandler('nexttrack', () => {{ playNext(); }});
                 }}
             }}
 
@@ -228,7 +341,6 @@ def generate_player_html(media_list, page_title):
                     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
                 }});
 
-                // 自动连播功能
                 art.on('ended', () => {{
                     playNext();
                 }});
@@ -239,7 +351,7 @@ def generate_player_html(media_list, page_title):
             window.addEventListener('DOMContentLoaded', () => {{
                 const listContainer = document.getElementById('mediaList');
                 if (currentMediaList.length === 0) {{
-                    listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">暂无媒体数据</li>';
+                    listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
                     return;
                 }}
 
@@ -269,11 +381,12 @@ def generate_player_html(media_list, page_title):
                 initPlayer(currentMediaList[index], index);
             }}
 
-            // 补充处理部分硬件按键的 keydown 映射
             window.addEventListener('keydown', (e) => {{
-                if (e.key === 'ArrowDown' || e.key === 'MediaTrackNext') {{
+                if (e.key === 'ArrowRight' || e.key === 'MediaTrackNext' || e.code === 'MediaTrackNext') {{
+                    e.preventDefault();
                     playNext();
-                }} else if (e.key === 'ArrowUp' || e.key === 'MediaTrackPrevious') {{
+                }} else if (e.key === 'ArrowLeft' || e.key === 'MediaTrackPrevious' || e.code === 'MediaTrackPrevious') {{
+                    e.preventDefault();
                     playPrev();
                 }}
             }});
@@ -281,17 +394,3 @@ def generate_player_html(media_list, page_title):
     </body>
     </html>
     """
-
-
-# ----------------- 路由 2: 音频播放页面 (/media/music) -----------------
-@router.get("/music", response_class=HTMLResponse)
-def get_music_player_page():
-    media_list = scan_media_files(AUDIO_EXTS, "audio")
-    return generate_player_html(media_list, "音乐播放器")
-
-
-# ----------------- 路由 3: 视频播放页面 (/media/video) -----------------
-@router.get("/video", response_class=HTMLResponse)
-def get_video_player_page():
-    media_list = scan_media_files(VIDEO_EXTS, "video")
-    return generate_player_html(media_list, "视频播放器")
