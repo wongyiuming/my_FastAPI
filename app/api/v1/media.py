@@ -1,6 +1,5 @@
 import os
 import sys
-from pathlib import Path
 import json
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
@@ -10,8 +9,7 @@ router = APIRouter()
 # ----------------- 环境与路径初始化 -----------------
 # 自动定位项目根目录 (app/api/v1/media.py 向上退4层到达项目根目录)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MEDIA_DIR = str(Path(__file__).resolve().parents[3] / "data" / "media")
+MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
@@ -25,11 +23,9 @@ def get_media_categories(media_type, valid_exts):
     if not os.path.exists(MEDIA_DIR):
         return categories
 
-    # 扫描 MEDIA_DIR 下的一级子目录作为分类
     for entry in sorted(os.listdir(MEDIA_DIR)):
         full_path = os.path.join(MEDIA_DIR, entry)
         if os.path.isdir(full_path):
-            # 检查该目录下是否有符合条件的媒体文件
             has_files = False
             for root, dirs, files in os.walk(full_path):
                 if any(f.lower().endswith(valid_exts) for f in files):
@@ -46,7 +42,6 @@ def get_media_categories(media_type, valid_exts):
 def scan_media_files_by_category(category_subpath, valid_exts, media_type):
     """扫描指定子分类目录下的媒体文件"""
     target_dir = os.path.normpath(os.path.join(MEDIA_DIR, category_subpath))
-    # 安全检查，防止路径穿越
     if not target_dir.startswith(os.path.normpath(MEDIA_DIR)):
         return []
 
@@ -341,7 +336,8 @@ def generate_player_html(media_list, page_title, category_list_url):
                     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
                 }});
 
-                art.on('ended', () => {{
+                // 强制修正：使用原生 video/audio 元素的 ended 绑定来确保自动连播不失效
+                art.on('video:ended', () => {{
                     playNext();
                 }});
 
