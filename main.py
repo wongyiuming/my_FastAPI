@@ -1,6 +1,7 @@
 import os
 import sys
 import uvicorn
+from fastapi.responses import FileResponse, Response
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -18,14 +19,23 @@ MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 app.mount("/static/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
-# 3. 原有静态资源处理
-static_path = os.path.join(BASE_DIR, "app", "static")
+# 3. wall的静态资源HTML挂载
+static_path = os.path.join(BASE_DIR)
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+FAVICON_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FAVICON_PATH = os.path.join(FAVICON_BASE_DIR, "static", "favicon.ico")
+
 @app.get("/wall", include_in_schema=False)
 async def read_wall_index():
-    return FileResponse(os.path.join(static_path, "index.html"))
+    return FileResponse(os.path.join(static_path, "wall_index.html"))
+
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon():
+    if os.path.exists(FAVICON_PATH):
+        return FileResponse(FAVICON_PATH)
+    return Response(status_code=204)
 
 @app.get("/", include_in_schema=False)
 async def root():

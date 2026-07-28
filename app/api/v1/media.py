@@ -58,7 +58,7 @@ def scan_media_files_by_category(category_subpath, valid_exts, media_type):
                         "artist": "私有云端",
                         "type": media_type,
                         "url": f"/static/media/{url_friendly_path}",
-                        "cover": "https://api.dujin.org/pic/"
+                        "cover": "/favicon.ico"
                     })
     return media_list
 
