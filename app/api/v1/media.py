@@ -201,7 +201,7 @@ def generate_player_html(media_list, page_title, category_list_url):
         <title>{page_title}</title>
         <style>
             * {{ box-sizing: border-box; }}
-            body {{ background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; touch-action: manipulation; }}
+            body {{ background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; touch-action: manipulation; flex-direction: row-reverse; }}
             .player-section {{ flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }}
             .artplayer-app {{ width: 100%; height: 100%; position: absolute; top: 0; left: 0; }}
             .audio-cover-container {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; background-size: cover; background-position: center; z-index: 1; pointer-events: none; }}
@@ -209,7 +209,7 @@ def generate_player_html(media_list, page_title, category_list_url):
             .audio-disk {{ width: 250px; height: 250px; border-radius: 50%; border: 8px solid rgba(255,255,255,0.1); box-shadow: 0 10px 40px rgba(0,0,0,0.6); z-index: 2; background-size: cover; background-position: center; }}
             .rotate-disk {{ animation: rotate 20s linear infinite; }}
             @keyframes rotate {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
-            .sidebar {{ flex: 1; min-width: 280px; background: #181818; border-left: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; }}
+            .sidebar {{ flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; }}
             .sidebar-header {{ padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }}
             .back-btn {{ color: #888; text-decoration: none; font-size: 14px; }}
             .back-btn:hover {{ color: #fff; }}
@@ -219,7 +219,7 @@ def generate_player_html(media_list, page_title, category_list_url):
             .media-list {{ flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; -webkit-overflow-scrolling: touch; touch-action: pan-y; }}
             .media-item {{ display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #222; cursor: pointer; transition: background 0.2s; user-select: none; }}
             .media-item:hover {{ background: #282828; }}
-            .media-item.active {{ background: #333; border-left: 4px solid #3498db; }}
+            .media-item.active {{ background: #333; border-right: 4px solid #3498db; border-left: none; }}
             .media-item img {{ width: 50px; height: 50px; border-radius: 6px; margin-right: 15px; object-fit: cover; pointer-events: none; }}
             .media-info {{ flex: 1; overflow: hidden; }}
             .media-title {{ font-size: 14px; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
