@@ -31,6 +31,8 @@ COPY . .
 
 # 设置中文字体环境变量（关键！）
 ENV WATERMARK_FONT_PATH=/usr/share/fonts/truetype/wqy/wqy-microhei.ttc
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 # 暴露端口
 EXPOSE 8000
