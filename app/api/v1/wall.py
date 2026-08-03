@@ -1,25 +1,32 @@
-# app/api/v1/wall.py
+import os
 from fastapi import APIRouter, Request, Header, HTTPException, Query
+from fastapi.responses import FileResponse
 from app.services.wall import wall_service
 from app.core.config import settings
 
 router = APIRouter()
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+STATIC_PATH = os.path.join(BASE_DIR)
+
+@router.get("", include_in_schema=False)
+async def read_wall_index():
+    return FileResponse(os.path.join(STATIC_PATH, "static","wall", "index.html"))
+
 def get_ip(req: Request):
     return req.headers.get("X-Real-IP") or req.client.host
 
-@router.get("/list")  # 对应前端的 /api/v1/wall/list
+@router.get("/list")
 async def list_posts():
     return await wall_service.get_all()
 
-@router.post("/publish")  # 对应前端的 /api/v1/wall/publish
+@router.post("/publish")
 async def create_post(request: Request, content: str = Query(...), x_token: str = Header(None)):
     is_admin = (x_token == settings.WALL_ADMIN_TOKEN)
     if not await wall_service.can_perform_action(request, is_admin):
         raise HTTPException(status_code=429, detail="操作太频繁，请冷却 4 分钟")
     return await wall_service.add_post(content, get_ip(request))
 
-# 评论逻辑建议保留，前端也需对应修改请求路径
 @router.post("/comment/{post_id}")
 async def create_comment(post_id: str, request: Request, content: str = Query(...), x_token: str = Header(None)):
     is_admin = (x_token == settings.WALL_ADMIN_TOKEN)
