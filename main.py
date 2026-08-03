@@ -2,18 +2,11 @@ import os
 import uvicorn
 from fastapi.responses import FileResponse, Response
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from app.api.v1.endpoints import router as api_v1_router
 
 app = FastAPI(title="Office Automation Service")
 
 app.include_router(api_v1_router, prefix="/api/v1")
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
-
-os.makedirs(MEDIA_DIR, exist_ok=True)
-app.mount("/static/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 FAVICON_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FAVICON_PATH = os.path.join(FAVICON_BASE_DIR, "static", "favicon.ico")

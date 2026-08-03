@@ -3,7 +3,7 @@ import zipfile
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import APIRouter
 from fastapi import UploadFile, File, Response, Query
 
 from app.core import utils
