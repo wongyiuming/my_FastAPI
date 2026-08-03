@@ -5,12 +5,13 @@ import py7zr
 import tempfile
 import pathlib
 import concurrent.futures
-from datetime import datetime
-import fitz  # PyMuPDF
+import fitz
+import os
 from docx import Document
 from docx.shared import Pt, RGBColor
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-import os
+from datetime import datetime
+
 
 def get_font_path():
     # 优先读取环境变量 (Docker 会传)
