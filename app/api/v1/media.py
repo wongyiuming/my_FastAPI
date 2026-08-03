@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse

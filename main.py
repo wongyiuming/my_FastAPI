@@ -1,10 +1,8 @@
 import os
-import sys
 import uvicorn
 from fastapi.responses import FileResponse, Response
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from app.api.v1.endpoints import router as api_v1_router
 
 app = FastAPI(title="Office Automation Service")

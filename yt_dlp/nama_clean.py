@@ -38,7 +38,9 @@ def sanitize_filename(path):
 
 
 if __name__ == '__main__':
-    target_path = r"data\clean"
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
+    target_path = MEDIA_DIR
     if os.path.isdir(target_path):
         sanitize_filename(target_path)
         print("处理完成！")

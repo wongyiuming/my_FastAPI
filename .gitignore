@@ -19,7 +19,6 @@ lib/
 lib64/
 parts/
 sdist/
-static/
 var/
 wheels/
 share/python-wheels/
@@ -66,6 +65,3 @@ venv.bak/
 
 # VS Code
 .vscode/
-
-# 但特例允许追踪 favicon.ico
-!static/favicon.ico
