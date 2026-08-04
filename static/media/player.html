@@ -6,8 +6,8 @@
     <title>{{PAGE_TITLE}}</title>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; touch-action: manipulation; flex-direction: row-reverse; }
-        .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }
+        body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; touch-action: none; flex-direction: row-reverse; }
+        .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
         .artplayer-app { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
         .audio-cover-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; background-size: cover; background-position: center; z-index: 1; pointer-events: none; }
         .audio-blur-bg { position: absolute; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(40px) brightness(0.4); transform: scale(1.1); }
@@ -29,15 +29,18 @@
         .media-info { flex: 1; overflow: hidden; }
         .media-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .media-artist { font-size: 12px; color: #888; }
+
+        .gesture-hud { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.75); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; display: none; }
     </style>
 </head>
 <body>
-    <div class="player-section">
+    <div class="player-section" id="playerSection">
         <div id="audioCover" class="audio-cover-container">
             <div id="audioBlurBg" class="audio-blur-bg"></div>
             <div id="audioDisk" class="audio-disk"></div>
         </div>
         <div id="artplayer" class="artplayer-app"></div>
+        <div id="gestureHud" class="gesture-hud"></div>
     </div>
     <div class="sidebar">
         <div class="sidebar-header">
@@ -148,6 +151,75 @@
             updateMediaSession(media);
         }
 
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function initGestureControl() {
+            const playerSection = document.getElementById('playerSection');
+            const gestureHud = document.getElementById('gestureHud');
+
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let initialTime = 0;
+            let targetTime = 0;
+            let isDragging = false;
+
+            playerSection.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 1 || !art) return;
+
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                initialTime = art.currentTime;
+                targetTime = initialTime;
+                isDragging = false;
+            }, { passive: false });
+
+            playerSection.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 1 || !art) return;
+
+                const currentX = e.touches[0].clientX;
+                const currentY = e.touches[0].clientY;
+                const deltaX = currentX - touchStartX;
+                const deltaY = currentY - touchStartY;
+
+                if (!isDragging && Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                    isDragging = true;
+                }
+
+                if (isDragging) {
+                    e.preventDefault();
+
+                    const duration = art.duration || 1;
+                    const sensitivity = 0.2;
+                    const seekOffset = deltaX * sensitivity;
+
+                    targetTime = Math.min(Math.max(0, initialTime + seekOffset), duration);
+
+                    const sign = seekOffset >= 0 ? '+' : '';
+                    gestureHud.innerText = `${sign}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
+                    gestureHud.style.display = 'block';
+                }
+            }, { passive: false });
+
+            playerSection.addEventListener('touchend', (e) => {
+                if (isDragging) {
+                    if (art) art.currentTime = targetTime;
+                    gestureHud.style.display = 'none';
+                    isDragging = false;
+                }
+            });
+
+            playerSection.addEventListener('touchcancel', () => {
+                if (isDragging) {
+                    gestureHud.style.display = 'none';
+                    isDragging = false;
+                }
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
@@ -166,6 +238,7 @@
             `).join('');
 
             initPlayer(currentMediaList[0], 0);
+            initGestureControl();
         });
 
         function selectMedia(index) {
@@ -192,4 +265,4 @@
         });
     </script>
 </body>
-</html>
+</html>0
