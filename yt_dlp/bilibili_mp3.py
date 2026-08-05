@@ -1,7 +1,7 @@
 import os
 import yt_dlp
 
-channel_url = 'https://space.bilibili.com/50687441/favlist?fid=4086690941&ftype=create&ctype=21'
+channel_url = 'https://space.bilibili.com/50687441/favlist?fid=4041747841&ftype=create'
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")

@@ -31,6 +31,13 @@ docker compose down && docker compose up -d --build
 参考 `.env.example` 进行配置。
 
 
+3更新
+```bash
+git pull https://github.com/wongyiuming/my_FastAPI.git
+docker compose down && docker compose up -d --build
+```
+
+
 ## ⚠️ Windows 部署注意事项（LTSC / Server 版本）
 
 如果你在 **Windows LTSC** 或 **精简系统（如 Server Core）** 上运行该项目，请务必先安装：
