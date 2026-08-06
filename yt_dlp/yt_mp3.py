@@ -1,23 +1,26 @@
 import os
 import yt_dlp
 
-# 注意：这里需要指向 /playlists 标签页，或者直接用主页配合参数
 channel_url = 'https://www.youtube.com/@%E7%BE%BD%E6%B1%9F-f4k/playlists'
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
-folder_name = MEDIA_DIR
 FFMPEG_PATH = r"C:\ffmpeg\bin"
 NODE_EXECUTABLE_PATH = r"C:\Program Files\nodejs\node.exe"
 
-folder_name = "".join(c for c in folder_name if c not in r'/:*?"<>|')
-os.makedirs(folder_name, exist_ok=True)
+os.makedirs(MEDIA_DIR, exist_ok=True)
+
+
+def sanitize_filename(name):
+    """过滤文件名或文件夹名称中的非法字符（保留路径分隔符）"""
+    return "".join(c for c in name if c not in r':*?"<>|')
 
 
 def main():
     ydl_opts = {
         'format': 'bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
-        'outtmpl': os.path.join(folder_name, '%(playlist_title)s/%(title)s.%(ext)s'),
+        'outtmpl': os.path.join(MEDIA_DIR, '%(playlist_title)s', '%(title)s.%(ext)s'),
+        'download_archive': os.path.join(MEDIA_DIR, 'archive.txt'),
         'noplaylist': False,
         'no_plugins': True,
         'remote_components': ['ejs:github'],
