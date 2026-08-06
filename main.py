@@ -4,34 +4,57 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, Response
 from app.api.v1.endpoints import router as api_v1_router
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 
 app = FastAPI(title="Office Automation Service")
 
 # ----------------- 核心：真实 IP 与请求日志中间件 -----------------
-@app.middleware("http")
-async def log_requests_with_real_ip(request: Request, call_next):
-    # 优先解析 Nginx 传过来的 X-Forwarded-For
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        # 格式为 "client_ip, proxy1, proxy2"，取第一个即为真实客户端 IP
-        client_ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        # 兜底读取 X-Real-IP 或 直连的客户端 IP
-        client_ip = request.headers.get("X-Real-IP", request.client.host if request.client else "127.0.0.1")
+class RealIPLogMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = (time.time() - start_time) * 1000
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-    # 同时打印真实公网 IP (REAL_IP) 和 上游代理 IP (PROXY_IP)
-    proxy_ip = request.client.host if request.client else "127.0.0.1"
-    print(
-        f"[LOG] REAL_IP: {client_ip} | PROXY_IP: {proxy_ip} | "
-        f"{request.method} {request.url.path} - {response.status_code} ({process_time:.2f}ms)"
-    )
+        start_time = time.time()
+        headers = dict(scope.get("headers", []))
 
-    return response
+        x_forwarded_for = headers.get(b"x-forwarded-for", b"").decode("utf-8")
+        if x_forwarded_for:
+            client_ip = x_forwarded_for.split(",")[0].strip()
+        else:
+            x_real_ip = headers.get(b"x-real-ip", b"").decode("utf-8")
+            if x_real_ip:
+                client_ip = x_real_ip
+            else:
+                client_ip = (
+                    scope.get("client")[0] if scope.get("client") else "127.0.0.1"
+                )
 
+        proxy_ip = scope.get("client")[0] if scope.get("client") else "127.0.0.1"
+        status_code = 200
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            process_time = (time.time() - start_time) * 1000
+            method = scope.get("method", "")
+            path = scope.get("path", "")
+            print(
+                f"[LOG] REAL_IP: {client_ip} | PROXY_IP: {proxy_ip} | "
+                f"{method} {path} - {status_code} ({process_time:.2f}ms)"
+            )
+
+app.add_middleware(RealIPLogMiddleware)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 
