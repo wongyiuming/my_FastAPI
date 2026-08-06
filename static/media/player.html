@@ -6,7 +6,8 @@
     <title>{{PAGE_TITLE}}</title>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; touch-action: none; flex-direction: row-reverse; }
+        /* 1. 修复：移除 body 上的 touch-action: none */
+        body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; flex-direction: row-reverse; }
         .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
         .artplayer-app { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
         .audio-cover-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; background-size: cover; background-position: center; z-index: 1; pointer-events: none; }
@@ -14,14 +15,16 @@
         .audio-disk { width: 250px; height: 250px; border-radius: 50%; border: 8px solid rgba(255,255,255,0.1); box-shadow: 0 10px 40px rgba(0,0,0,0.6); z-index: 2; background-size: cover; background-position: center; }
         .rotate-disk { animation: rotate 20s linear infinite; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; }
+
+        /* 2. 修复：侧边栏与媒体列表添加 touch-action: pan-y，允许原生流畅滚动 */
+        .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; touch-action: pan-y; }
         .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }
         .back-btn { color: #888; text-decoration: none; font-size: 14px; }
         .back-btn:hover { color: #fff; }
         .player-controls { padding: 12px 15px; background: #1f1f1f; display: flex; gap: 10px; border-bottom: 1px solid #282828; }
         .control-btn { flex: 1; background: #2a2a2a; color: #fff; border: 1px solid #3a3a3a; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-align: center; transition: background 0.2s; user-select: none; }
         .control-btn:hover { background: #3a3a3a; }
-        .media-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+        .media-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; -webkit-overflow-scrolling: touch; touch-action: pan-y; will-change: transform; }
         .media-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #222; cursor: pointer; transition: background 0.2s; user-select: none; }
         .media-item:hover { background: #282828; }
         .media-item.active { background: #333; border-right: 4px solid #3498db; border-left: none; }
@@ -58,6 +61,7 @@
     <script>
         let art = null;
         let currentIndex = 0;
+        let isNextPreloaded = false;
         const currentMediaList = {{MEDIA_JSON}};
 
         function updateMediaSession(media) {
@@ -78,6 +82,19 @@
             }
         }
 
+        /* 3. 新增：预加载下一首（命中网络/本地缓存） */
+        function checkAndPreloadNext(currentTime) {
+            if (currentTime >= 20 && !isNextPreloaded) {
+                isNextPreloaded = true;
+                if (!currentMediaList || currentMediaList.length <= 1) return;
+                const nextIndex = (currentIndex + 1) % currentMediaList.length;
+                const nextUrl = currentMediaList[nextIndex].url;
+
+                fetch(nextUrl, { method: 'GET', headers: { 'Range': 'bytes=0-2097152' } })
+                    .catch(() => {});
+            }
+        }
+
         function playNext() {
             if (!currentMediaList || currentMediaList.length === 0) return;
             const nextIndex = (currentIndex + 1) % currentMediaList.length;
@@ -92,6 +109,7 @@
 
         function initPlayer(media, index) {
             currentIndex = index;
+            isNextPreloaded = false;
             const isAudio = media.type === 'audio';
             const audioCover = document.getElementById('audioCover');
             const audioDisk = document.getElementById('audioDisk');
@@ -142,6 +160,10 @@
             art.on('pause', () => {
                 audioDisk.classList.remove('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+            });
+
+            art.on('video:timeupdate', () => {
+                checkAndPreloadNext(art.currentTime);
             });
 
             art.on('video:ended', () => {
@@ -248,7 +270,8 @@
             const targetElement = items[index];
             if (targetElement) {
                 targetElement.classList.add('active');
-                targetElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                /* 4. 修复：将 smooth 替换为 auto */
+                targetElement.scrollIntoView({ block: 'nearest', behavior: 'auto' });
             }
 
             initPlayer(currentMediaList[index], index);

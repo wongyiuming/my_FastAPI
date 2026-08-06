@@ -1,12 +1,12 @@
 import os
 import json
+import asyncio
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 
 router = APIRouter()
 
 # ----------------- 环境与路径初始化 -----------------
-# 定位项目根目录 (app/api/v1/media.py 向上退4层)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 STATIC_MEDIA_DIR = os.path.join(BASE_DIR, "static", "media")
@@ -17,8 +17,7 @@ AUDIO_EXTS = ('.mp3', '.m4a', '.flac', '.wav')
 VIDEO_EXTS = ('.mp4', '.webm', '.mkv')
 
 
-def get_media_categories(media_type, valid_exts):
-    """获取指定媒体类型下的分类目录列表"""
+def _get_media_categories_sync(media_type, valid_exts):
     categories = []
     if not os.path.exists(MEDIA_DIR):
         return categories
@@ -39,8 +38,11 @@ def get_media_categories(media_type, valid_exts):
     return categories
 
 
-def scan_media_files_by_category(category_subpath, valid_exts, media_type):
-    """扫描指定子分类目录下的媒体文件"""
+async def get_media_categories(media_type, valid_exts):
+    return await asyncio.to_thread(_get_media_categories_sync, media_type, valid_exts)
+
+
+def _scan_media_files_by_category_sync(category_subpath, valid_exts, media_type):
     target_dir = os.path.normpath(os.path.join(MEDIA_DIR, category_subpath))
     if not target_dir.startswith(os.path.normpath(MEDIA_DIR)):
         return []
@@ -53,7 +55,6 @@ def scan_media_files_by_category(category_subpath, valid_exts, media_type):
                     relative_path = os.path.relpath(os.path.join(root, file), MEDIA_DIR)
                     url_friendly_path = relative_path.replace(chr(92), '/')
 
-                    # 修改：将媒体文件的请求地址指向我们自己写的 API 接口，而不是静态挂载点
                     media_list.append({
                         "title": os.path.splitext(file)[0],
                         "artist": "私有云端",
@@ -64,8 +65,11 @@ def scan_media_files_by_category(category_subpath, valid_exts, media_type):
     return media_list
 
 
+async def scan_media_files_by_category(category_subpath, valid_exts, media_type):
+    return await asyncio.to_thread(_scan_media_files_by_category_sync, category_subpath, valid_exts, media_type)
+
+
 def load_html_template(filename: str) -> str:
-    """读取 static/media/ 下的独立 HTML 文件"""
     file_path = os.path.join(STATIC_MEDIA_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"Template {filename} not found in static/media/")
@@ -75,61 +79,68 @@ def load_html_template(filename: str) -> str:
 
 # ----------------- 路由 0: 媒体文件流式传输接口 -----------------
 @router.get("/stream")
-def stream_media_file(file_path: str = Query(...)):
-    """通过 API 安全读取并返回 data/media 下的媒体文件，支持范围请求（播放/快进）"""
+async def stream_media_file(file_path: str = Query(...)):
     safe_path = os.path.normpath(os.path.join(MEDIA_DIR, file_path))
     if not safe_path.startswith(os.path.normpath(MEDIA_DIR)) or not os.path.exists(safe_path):
         raise HTTPException(status_code=404, detail="Media file not found")
 
-    return FileResponse(safe_path)
+    # 包含 Range 支持和协商/客户端缓存 Response
+    return FileResponse(
+        safe_path,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes"
+        }
+    )
 
 
 # ----------------- 路由 1: 媒体导航首页 (/media/) -----------------
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
-def get_media_index_page():
-    return load_html_template("index.html")
+async def get_media_index_page():
+    content = load_html_template("index.html")
+    return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
 
 
 # ----------------- 路由 2: 音频分类列表页 (/media/music) -----------------
 @router.get("/music", response_class=HTMLResponse)
-def get_music_categories_page():
-    categories = get_media_categories("music", AUDIO_EXTS)
+async def get_music_categories_page():
+    categories = await get_media_categories("music", AUDIO_EXTS)
     html = load_html_template("category.html")
     html = html.replace("{{PAGE_TITLE}}", "音频分类目录")
     html = html.replace("{{BACK_URL}}", "/api/v1/media")
     html = html.replace("{{CATEGORIES_JSON}}", json.dumps(categories, ensure_ascii=False))
-    return html
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=600"})
 
 
 # ----------------- 路由 3: 视频分类列表页 (/media/video) -----------------
 @router.get("/video", response_class=HTMLResponse)
-def get_video_categories_page():
-    categories = get_media_categories("video", VIDEO_EXTS)
+async def get_video_categories_page():
+    categories = await get_media_categories("video", VIDEO_EXTS)
     html = load_html_template("category.html")
     html = html.replace("{{PAGE_TITLE}}", "视频分类目录")
     html = html.replace("{{BACK_URL}}", "/api/v1/media")
     html = html.replace("{{CATEGORIES_JSON}}", json.dumps(categories, ensure_ascii=False))
-    return html
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=600"})
 
 
 # ----------------- 路由 4: 音频播放页面（带分类） -----------------
 @router.get("/music/category", response_class=HTMLResponse)
-def get_music_player_page(path: str = Query(...)):
-    media_list = scan_media_files_by_category(path, AUDIO_EXTS, "audio")
+async def get_music_player_page(path: str = Query(...)):
+    media_list = await scan_media_files_by_category(path, AUDIO_EXTS, "audio")
     html = load_html_template("player.html")
     html = html.replace("{{PAGE_TITLE}}", f"音乐播放 - {path}")
     html = html.replace("{{CATEGORY_LIST_URL}}", "/api/v1/media/music")
     html = html.replace("{{MEDIA_JSON}}", json.dumps(media_list, ensure_ascii=False))
-    return html
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=600"})
 
 
 # ----------------- 路由 5: 视频播放页面（带分类） -----------------
 @router.get("/video/category", response_class=HTMLResponse)
-def get_video_player_page(path: str = Query(...)):
-    media_list = scan_media_files_by_category(path, VIDEO_EXTS, "video")
+async def get_video_player_page(path: str = Query(...)):
+    media_list = await scan_media_files_by_category(path, VIDEO_EXTS, "video")
     html = load_html_template("player.html")
     html = html.replace("{{PAGE_TITLE}}", f"视频播放 - {path}")
     html = html.replace("{{CATEGORY_LIST_URL}}", "/api/v1/media/video")
     html = html.replace("{{MEDIA_JSON}}", json.dumps(media_list, ensure_ascii=False))
-    return html
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=600"})
