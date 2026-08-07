@@ -21,13 +21,14 @@ RUN apt-get update && \
 
 # 复制依赖文件
 COPY pyproject.toml .
+COPY .env .
+COPY main.py .
 
 # 安装 Python 依赖（使用 pip）
 # 注意：如果你用 poetry，可改用 poetry export
 RUN pip install --no-cache-dir .
 
 # 复制应用代码
-COPY . .
 
 # 设置中文字体环境变量（关键！）
 ENV WATERMARK_FONT_PATH=/usr/share/fonts/truetype/wqy/wqy-microhei.ttc

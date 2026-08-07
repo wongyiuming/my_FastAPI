@@ -12,6 +12,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./data:/app/data
+      - ./static:/app/static
 
   # Redis 服务
   redis:
