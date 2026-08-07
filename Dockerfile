@@ -21,7 +21,6 @@ RUN apt-get update && \
 
 # 复制依赖文件
 COPY pyproject.toml .
-COPY .env .
 COPY main.py .
 
 # 安装 Python 依赖（使用 pip）
