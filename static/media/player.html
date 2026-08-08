@@ -261,8 +261,18 @@
             });
         }
 
+        // 初始化特斯拉车机历史路由拦截，防止滚轮左推触发系统 Back 退出网页
+        function initTeslaHistoryHack() {
+            history.pushState({ teslaGuard: true }, '');
+            window.addEventListener('popstate', (e) => {
+                history.pushState({ teslaGuard: true }, '');
+                playPrev();
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             initGlobalMediaSessionHandlers();
+            initTeslaHistoryHack();
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
                 listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
@@ -297,15 +307,39 @@
             initPlayer(currentMediaList[index], index);
         }
 
+        // 绑定键盘与媒体物理事件，使用 capture (true) 阶段进行优先捕获
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowRight' || e.key === 'MediaTrackNext' || e.code === 'MediaTrackNext') {
+            const key = e.key;
+            const code = e.code;
+
+            // 特斯拉滚轮向右推（下一首）
+            if (
+                key === 'ArrowRight' ||
+                key === 'MediaTrackNext' ||
+                code === 'MediaTrackNext' ||
+                code === 'ArrowRight' ||
+                key === 'BrowserForward'
+            ) {
                 e.preventDefault();
+                e.stopPropagation();
                 playNext();
-            } else if (e.key === 'ArrowLeft' || e.key === 'MediaTrackPrevious' || e.code === 'MediaTrackPrevious') {
-                e.preventDefault();
-                playPrev();
+                return;
             }
-        });
+
+            // 特斯拉滚轮向左推（上一首）
+            if (
+                key === 'ArrowLeft' ||
+                key === 'MediaTrackPrevious' ||
+                code === 'MediaTrackPrevious' ||
+                code === 'ArrowLeft' ||
+                key === 'BrowserBack'
+            ) {
+                e.preventDefault();
+                e.stopPropagation();
+                playPrev();
+                return;
+            }
+        }, true);
     </script>
 </body>
 </html>
