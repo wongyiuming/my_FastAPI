@@ -32,6 +32,13 @@
         .media-artist { font-size: 12px; color: #888; }
 
         .gesture-hud { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.75); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; display: none; }
+
+        /* 强制用户点击的引导层 */
+        .start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; backdrop-filter: blur(10px); }
+        .start-overlay h2 { margin: 0; font-size: 28px; color: #fff; }
+        .start-overlay p { margin-top: 15px; font-size: 16px; color: #bbb; max-width: 80%; text-align: center; line-height: 1.5; }
+        .play-icon { width: 80px; height: 80px; fill: #3498db; margin-bottom: 20px; transition: transform 0.2s; }
+        .start-overlay:hover .play-icon { transform: scale(1.1); }
     </style>
 </head>
 <body>
@@ -42,7 +49,15 @@
         </div>
         <div id="artplayer" class="artplayer-app"></div>
         <div id="gestureHud" class="gesture-hud"></div>
+
+        <!-- 启动遮罩：抢占系统媒体焦点的关键 -->
+        <div id="startOverlay" class="start-overlay">
+            <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <h2>点击屏幕开始播放</h2>
+            <p>由于车机系统安全限制，必须由您的真实点击触发播放<br>才能成功接管方向盘滚轮控制权</p>
+        </div>
     </div>
+
     <div class="sidebar">
         <div class="sidebar-header">
             <span>播放列表</span>
@@ -61,16 +76,18 @@
         let currentIndex = 0;
         let isNextPreloaded = false;
         const currentMediaList = {{MEDIA_JSON}};
+        let hasStarted = false;
 
-        function initGlobalMediaSessionHandlers() {
+        function setupMediaSession() {
             if ('mediaSession' in navigator) {
+                // 绑定标准的上一曲/下一曲事件
+                navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+                navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+                // 特斯拉有时将滚轮动作识别为 seek，作为冗余一并拦截
+                navigator.mediaSession.setActionHandler('seekbackward', () => playPrev());
+                navigator.mediaSession.setActionHandler('seekforward', () => playNext());
                 navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
                 navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
-                navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
-                navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
-                // 增加冗余：某些系统会将滚轮动作映射为 seek
-                navigator.mediaSession.setActionHandler('seekbackward', () => { playPrev(); });
-                navigator.mediaSession.setActionHandler('seekforward', () => { playNext(); });
             }
         }
 
@@ -143,11 +160,8 @@
                 art.switchUrl(media.url).then(() => {
                     art.title = media.title;
                     art.play();
-                    if (isAudio) {
-                        audioDisk.classList.add('rotate-disk');
-                    } else {
-                        audioDisk.classList.remove('rotate-disk');
-                    }
+                    if (isAudio) audioDisk.classList.add('rotate-disk');
+                    else audioDisk.classList.remove('rotate-disk');
                     updateMediaSessionMetadata(media);
                 }).catch(() => {
                     art.url = media.url;
@@ -161,7 +175,8 @@
                 container: '#artplayer',
                 url: media.url,
                 title: media.title,
-                volume: 0.7,
+                volume: 1.0,       // 默认满音量
+                muted: false,      // 强制不静音，车机底层据此判断是否下发音频焦点
                 autoplay: true,
                 autoSize: true,
                 fullscreen: true,
@@ -172,6 +187,7 @@
                 if (media.type === 'audio') audioDisk.classList.add('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
                 updatePositionState();
+                setupMediaSession(); // 确保每次播放时都激活控制权
             });
 
             art.on('pause', () => {
@@ -180,13 +196,8 @@
                 updatePositionState();
             });
 
-            art.on('video:timeupdate', () => {
-                checkAndPreloadNext(art.currentTime);
-            });
-
-            art.on('video:ended', () => {
-                playNext();
-            });
+            art.on('video:timeupdate', () => checkAndPreloadNext(art.currentTime));
+            art.on('video:ended', () => playNext());
 
             updateMediaSessionMetadata(media);
         }
@@ -201,10 +212,8 @@
             const playerSection = document.getElementById('playerSection');
             const gestureHud = document.getElementById('gestureHud');
 
-            let touchStartX = 0;
-            let touchStartY = 0;
-            let initialTime = 0;
-            let targetTime = 0;
+            let touchStartX = 0, touchStartY = 0;
+            let initialTime = 0, targetTime = 0;
             let isDragging = false;
 
             playerSection.addEventListener('touchstart', (e) => {
@@ -218,10 +227,8 @@
 
             playerSection.addEventListener('touchmove', (e) => {
                 if (e.touches.length > 1 || !art) return;
-                const currentX = e.touches[0].clientX;
-                const currentY = e.touches[0].clientY;
-                const deltaX = currentX - touchStartX;
-                const deltaY = currentY - touchStartY;
+                const deltaX = e.touches[0].clientX - touchStartX;
+                const deltaY = e.touches[0].clientY - touchStartY;
 
                 if (!isDragging && Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
                     isDragging = true;
@@ -230,19 +237,16 @@
                 if (isDragging) {
                     e.preventDefault();
                     const duration = art.duration || 1;
-                    const sensitivity = 0.2;
-                    const seekOffset = deltaX * sensitivity;
-
+                    const seekOffset = deltaX * 0.2;
                     targetTime = Math.min(Math.max(0, initialTime + seekOffset), duration);
-                    const sign = seekOffset >= 0 ? '+' : '';
-                    gestureHud.innerText = `${sign}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
+                    gestureHud.innerText = `${seekOffset >= 0 ? '+' : ''}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
                     gestureHud.style.display = 'block';
                 }
             }, { passive: false });
 
-            playerSection.addEventListener('touchend', (e) => {
-                if (isDragging) {
-                    if (art) art.currentTime = targetTime;
+            playerSection.addEventListener('touchend', () => {
+                if (isDragging && art) {
+                    art.currentTime = targetTime;
                     gestureHud.style.display = 'none';
                     isDragging = false;
                 }
@@ -256,49 +260,29 @@
             });
         }
 
-        // 核心修复：三态历史记录陷阱
-        let isHistoryTrapping = false;
-        function initTeslaHistoryHack() {
-            // 初始化堆栈结构: [1, 2, 3]，并将指针停留在 2
-            history.replaceState({ step: 1 }, "");
-            history.pushState({ step: 2 }, "");
-            history.pushState({ step: 3 }, "");
-            history.go(-1);
+        function selectMedia(index) {
+            // 无论从哪里触发（列表点击），都视为已通过用户验证，隐藏遮罩
+            const overlay = document.getElementById('startOverlay');
+            if (overlay) overlay.style.display = 'none';
+            hasStarted = true;
 
-            window.addEventListener('popstate', (e) => {
-                if (isHistoryTrapping) return;
-                isHistoryTrapping = true;
+            const items = document.querySelectorAll('.media-item');
+            items.forEach(item => item.classList.remove('active'));
 
-                if (e.state && e.state.step === 1) {
-                    // 用户触发了“后退”（左推滚轮），触发上一首
-                    playPrev();
-                    history.go(1); // 将指针推回 2
-                } else if (e.state && e.state.step === 3) {
-                    // 用户触发了“前进”（右推滚轮），触发下一首
-                    playNext();
-                    history.go(-1); // 将指针拉回 2
-                } else {
-                    // 应对异常状态或丢失，重新构建三态陷阱
-                    history.replaceState({ step: 1 }, "");
-                    history.pushState({ step: 2 }, "");
-                    history.pushState({ step: 3 }, "");
-                    history.go(-1);
-                }
+            const targetElement = items[index];
+            if (targetElement) {
+                targetElement.classList.add('active');
+                targetElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
 
-                // 防抖，防止滚轮连续触发导致 history 崩溃
-                setTimeout(() => {
-                    isHistoryTrapping = false;
-                }, 150);
-            });
+            initPlayer(currentMediaList[index], index);
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            initGlobalMediaSessionHandlers();
-            initTeslaHistoryHack();
-
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
                 listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
+                document.getElementById('startOverlay').style.display = 'none';
                 return;
             }
 
@@ -312,51 +296,26 @@
                 </li>
             `).join('');
 
-            initPlayer(currentMediaList[0], 0);
             initGestureControl();
+
+            // 监听启动遮罩点击，触发首次播放获取焦点
+            document.getElementById('startOverlay').addEventListener('click', () => {
+                if (!hasStarted) {
+                    selectMedia(0);
+                }
+            });
         });
 
-        function selectMedia(index) {
-            const items = document.querySelectorAll('.media-item');
-            items.forEach(item => item.classList.remove('active'));
-
-            const targetElement = items[index];
-            if (targetElement) {
-                targetElement.classList.add('active');
-                targetElement.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-            }
-
-            initPlayer(currentMediaList[index], index);
-        }
-
+        // 冗余物理按键拦截
         window.addEventListener('keydown', (e) => {
             const key = e.key;
             const code = e.code;
-
-            if (
-                key === 'ArrowRight' ||
-                key === 'MediaTrackNext' ||
-                code === 'MediaTrackNext' ||
-                code === 'ArrowRight' ||
-                key === 'BrowserForward'
-            ) {
+            if (key === 'MediaTrackNext' || code === 'MediaTrackNext') {
                 e.preventDefault();
-                e.stopPropagation();
                 playNext();
-                return;
-            }
-
-            if (
-                key === 'ArrowLeft' ||
-                key === 'MediaTrackPrevious' ||
-                code === 'MediaTrackPrevious' ||
-                code === 'ArrowLeft' ||
-                key === 'BrowserBack'
-            ) {
+            } else if (key === 'MediaTrackPrevious' || code === 'MediaTrackPrevious') {
                 e.preventDefault();
-                e.stopPropagation();
                 playPrev();
-                return;
             }
         }, true);
     </script>
