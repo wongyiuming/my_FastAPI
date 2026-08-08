@@ -6,7 +6,6 @@
     <title>{{PAGE_TITLE}}</title>
     <style>
         * { box-sizing: border-box; }
-        /* 1. 修复：移除 body 上的 touch-action: none */
         body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; flex-direction: row-reverse; }
         .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
         .artplayer-app { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
@@ -16,7 +15,6 @@
         .rotate-disk { animation: rotate 20s linear infinite; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-        /* 2. 修复：侧边栏与媒体列表添加 touch-action: pan-y，允许原生流畅滚动 */
         .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; touch-action: pan-y; }
         .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }
         .back-btn { color: #888; text-decoration: none; font-size: 14px; }
@@ -64,13 +62,15 @@
         let isNextPreloaded = false;
         const currentMediaList = {{MEDIA_JSON}};
 
-        // 全局一次性初始化 MediaSession 监听，避免反复注册丢失句柄
         function initGlobalMediaSessionHandlers() {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
                 navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
                 navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
                 navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+                // 增加冗余：某些系统会将滚轮动作映射为 seek
+                navigator.mediaSession.setActionHandler('seekbackward', () => { playPrev(); });
+                navigator.mediaSession.setActionHandler('seekforward', () => { playNext(); });
             }
         }
 
@@ -99,7 +99,6 @@
             }
         }
 
-        /* 3. 新增：预加载下一首（命中网络/本地缓存） */
         function checkAndPreloadNext(currentTime) {
             if (currentTime >= 20 && !isNextPreloaded) {
                 isNextPreloaded = true;
@@ -210,7 +209,6 @@
 
             playerSection.addEventListener('touchstart', (e) => {
                 if (e.touches.length > 1 || !art) return;
-
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
                 initialTime = art.currentTime;
@@ -220,7 +218,6 @@
 
             playerSection.addEventListener('touchmove', (e) => {
                 if (e.touches.length > 1 || !art) return;
-
                 const currentX = e.touches[0].clientX;
                 const currentY = e.touches[0].clientY;
                 const deltaX = currentX - touchStartX;
@@ -232,13 +229,11 @@
 
                 if (isDragging) {
                     e.preventDefault();
-
                     const duration = art.duration || 1;
                     const sensitivity = 0.2;
                     const seekOffset = deltaX * sensitivity;
 
                     targetTime = Math.min(Math.max(0, initialTime + seekOffset), duration);
-
                     const sign = seekOffset >= 0 ? '+' : '';
                     gestureHud.innerText = `${sign}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
                     gestureHud.style.display = 'block';
@@ -261,18 +256,46 @@
             });
         }
 
-        // 初始化特斯拉车机历史路由拦截，防止滚轮左推触发系统 Back 退出网页
+        // 核心修复：三态历史记录陷阱
+        let isHistoryTrapping = false;
         function initTeslaHistoryHack() {
-            history.pushState({ teslaGuard: true }, '');
+            // 初始化堆栈结构: [1, 2, 3]，并将指针停留在 2
+            history.replaceState({ step: 1 }, "");
+            history.pushState({ step: 2 }, "");
+            history.pushState({ step: 3 }, "");
+            history.go(-1);
+
             window.addEventListener('popstate', (e) => {
-                history.pushState({ teslaGuard: true }, '');
-                playPrev();
+                if (isHistoryTrapping) return;
+                isHistoryTrapping = true;
+
+                if (e.state && e.state.step === 1) {
+                    // 用户触发了“后退”（左推滚轮），触发上一首
+                    playPrev();
+                    history.go(1); // 将指针推回 2
+                } else if (e.state && e.state.step === 3) {
+                    // 用户触发了“前进”（右推滚轮），触发下一首
+                    playNext();
+                    history.go(-1); // 将指针拉回 2
+                } else {
+                    // 应对异常状态或丢失，重新构建三态陷阱
+                    history.replaceState({ step: 1 }, "");
+                    history.pushState({ step: 2 }, "");
+                    history.pushState({ step: 3 }, "");
+                    history.go(-1);
+                }
+
+                // 防抖，防止滚轮连续触发导致 history 崩溃
+                setTimeout(() => {
+                    isHistoryTrapping = false;
+                }, 150);
             });
         }
 
         window.addEventListener('DOMContentLoaded', () => {
             initGlobalMediaSessionHandlers();
             initTeslaHistoryHack();
+
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
                 listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
@@ -300,19 +323,16 @@
             const targetElement = items[index];
             if (targetElement) {
                 targetElement.classList.add('active');
-                /* 4. 修复：将 smooth 替换为 auto */
                 targetElement.scrollIntoView({ block: 'nearest', behavior: 'auto' });
             }
 
             initPlayer(currentMediaList[index], index);
         }
 
-        // 绑定键盘与媒体物理事件，使用 capture (true) 阶段进行优先捕获
         window.addEventListener('keydown', (e) => {
             const key = e.key;
             const code = e.code;
 
-            // 特斯拉滚轮向右推（下一首）
             if (
                 key === 'ArrowRight' ||
                 key === 'MediaTrackNext' ||
@@ -326,7 +346,6 @@
                 return;
             }
 
-            // 特斯拉滚轮向左推（上一首）
             if (
                 key === 'ArrowLeft' ||
                 key === 'MediaTrackPrevious' ||
