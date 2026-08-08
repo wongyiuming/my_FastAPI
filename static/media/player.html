@@ -64,7 +64,17 @@
         let isNextPreloaded = false;
         const currentMediaList = {{MEDIA_JSON}};
 
-        function updateMediaSession(media) {
+        // 全局一次性初始化 MediaSession 监听，避免反复注册丢失句柄
+        function initGlobalMediaSessionHandlers() {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
+                navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
+                navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
+                navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+            }
+        }
+
+        function updateMediaSessionMetadata(media) {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: media.title || '未知曲目',
@@ -74,11 +84,18 @@
                         { src: media.cover, sizes: '512x512', type: 'image/png' }
                     ]
                 });
+            }
+        }
 
-                navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
-                navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
-                navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
-                navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+        function updatePositionState() {
+            if ('mediaSession' in navigator && art && art.duration) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: art.duration || 0,
+                        playbackRate: art.playbackRate || 1,
+                        position: art.currentTime || 0
+                    });
+                } catch (e) {}
             }
         }
 
@@ -132,11 +149,11 @@
                     } else {
                         audioDisk.classList.remove('rotate-disk');
                     }
-                    updateMediaSession(media);
+                    updateMediaSessionMetadata(media);
                 }).catch(() => {
                     art.url = media.url;
                     art.play();
-                    updateMediaSession(media);
+                    updateMediaSessionMetadata(media);
                 });
                 return;
             }
@@ -155,11 +172,13 @@
             art.on('play', () => {
                 if (media.type === 'audio') audioDisk.classList.add('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+                updatePositionState();
             });
 
             art.on('pause', () => {
                 audioDisk.classList.remove('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+                updatePositionState();
             });
 
             art.on('video:timeupdate', () => {
@@ -170,7 +189,7 @@
                 playNext();
             });
 
-            updateMediaSession(media);
+            updateMediaSessionMetadata(media);
         }
 
         function formatTime(seconds) {
@@ -243,6 +262,7 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            initGlobalMediaSessionHandlers();
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
                 listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
