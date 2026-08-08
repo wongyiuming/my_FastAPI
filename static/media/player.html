@@ -33,15 +33,20 @@
 
         .gesture-hud { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.75); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; display: none; }
 
-        /* 强制用户点击的引导层 */
         .start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; backdrop-filter: blur(10px); }
         .start-overlay h2 { margin: 0; font-size: 28px; color: #fff; }
         .start-overlay p { margin-top: 15px; font-size: 16px; color: #bbb; max-width: 80%; text-align: center; line-height: 1.5; }
-        .play-icon { width: 80px; height: 80px; fill: #3498db; margin-bottom: 20px; transition: transform 0.2s; }
-        .start-overlay:hover .play-icon { transform: scale(1.1); }
+        .play-icon { width: 80px; height: 80px; fill: #3498db; margin-bottom: 20px; }
+
+        /* 调试面板 UI */
+        #debugPanel { position: fixed; top: 10px; right: 10px; width: 320px; height: 400px; background: rgba(0, 0, 0, 0.85); border: 1px solid #3498db; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; color: #0f0; overflow-y: auto; z-index: 10000; pointer-events: none; word-wrap: break-word; }
+        #debugPanel p { margin: 2px 0; border-bottom: 1px solid rgba(0,255,0,0.2); padding-bottom: 2px; }
     </style>
 </head>
 <body>
+    <!-- 调试面板 -->
+    <div id="debugPanel"></div>
+
     <div class="player-section" id="playerSection">
         <div id="audioCover" class="audio-cover-container">
             <div id="audioBlurBg" class="audio-blur-bg"></div>
@@ -50,28 +55,51 @@
         <div id="artplayer" class="artplayer-app"></div>
         <div id="gestureHud" class="gesture-hud"></div>
 
-        <!-- 启动遮罩：抢占系统媒体焦点的关键 -->
         <div id="startOverlay" class="start-overlay">
             <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             <h2>点击屏幕开始播放</h2>
-            <p>由于车机系统安全限制，必须由您的真实点击触发播放<br>才能成功接管方向盘滚轮控制权</p>
+            <p>由于车机系统安全限制，必须由您的真实点击触发播放</p>
         </div>
     </div>
 
     <div class="sidebar">
         <div class="sidebar-header">
             <span>播放列表</span>
-            <a href="{{CATEGORY_LIST_URL}}" class="back-btn">← 返回分类</a>
+            <a href="{{CATEGORY_LIST_URL}}" class="back-btn" style="pointer-events: auto;">← 返回分类</a>
         </div>
         <div class="player-controls">
-            <button class="control-btn" onclick="playPrev()">⏮ 上一首</button>
-            <button class="control-btn" onclick="playNext()">下一首 ⏭</button>
+            <button class="control-btn" onclick="playPrev()" style="pointer-events: auto;">⏮ 上一首</button>
+            <button class="control-btn" onclick="playNext()" style="pointer-events: auto;">下一首 ⏭</button>
         </div>
         <ul id="mediaList" class="media-list"></ul>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.1.1/artplayer.js"></script>
     <script>
+        // --- 核心调试日志功能 ---
+        function uiLog(msg) {
+            const panel = document.getElementById('debugPanel');
+            if (!panel) return;
+            const time = new Date().toISOString().split('T')[1].slice(0, -1);
+            const p = document.createElement('p');
+            p.textContent = `[${time}] ${msg}`;
+            panel.appendChild(p);
+            panel.scrollTop = panel.scrollHeight; // 自动滚动到底部
+        }
+
+        // 拦截全局异常
+        window.addEventListener('error', (e) => {
+            uiLog(`[ERR] ${e.message}`);
+        });
+
+        uiLog("页面初始化完成, 监听已开启");
+        if ('mediaSession' in navigator) {
+            uiLog("浏览器支持 MediaSession API");
+        } else {
+            uiLog("[严重警告] 此浏览器不支持 MediaSession!");
+        }
+        // -----------------------
+
         let art = null;
         let currentIndex = 0;
         let isNextPreloaded = false;
@@ -80,14 +108,25 @@
 
         function setupMediaSession() {
             if ('mediaSession' in navigator) {
-                // 绑定标准的上一曲/下一曲事件
-                navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
-                navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
-                // 特斯拉有时将滚轮动作识别为 seek，作为冗余一并拦截
-                navigator.mediaSession.setActionHandler('seekbackward', () => playPrev());
-                navigator.mediaSession.setActionHandler('seekforward', () => playNext());
-                navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
-                navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
+                const actions = [
+                    'play', 'pause', 'previoustrack', 'nexttrack',
+                    'seekbackward', 'seekforward'
+                ];
+
+                actions.forEach(action => {
+                    try {
+                        navigator.mediaSession.setActionHandler(action, () => {
+                            uiLog(`[MediaSession] 收到车机指令: ${action}`);
+                            if (action === 'previoustrack' || action === 'seekbackward') playPrev();
+                            if (action === 'nexttrack' || action === 'seekforward') playNext();
+                            if (action === 'play' && art) art.play();
+                            if (action === 'pause' && art) art.pause();
+                        });
+                        uiLog(`已绑定 MediaSession: ${action}`);
+                    } catch (e) {
+                        uiLog(`[WARN] 绑定 ${action} 失败`);
+                    }
+                });
             }
         }
 
@@ -101,6 +140,7 @@
                         { src: media.cover, sizes: '512x512', type: 'image/png' }
                     ]
                 });
+                uiLog(`[Meta] 更新媒体信息: ${media.title}`);
             }
         }
 
@@ -116,25 +156,15 @@
             }
         }
 
-        function checkAndPreloadNext(currentTime) {
-            if (currentTime >= 20 && !isNextPreloaded) {
-                isNextPreloaded = true;
-                if (!currentMediaList || currentMediaList.length <= 1) return;
-                const nextIndex = (currentIndex + 1) % currentMediaList.length;
-                const nextUrl = currentMediaList[nextIndex].url;
-
-                fetch(nextUrl, { method: 'GET', headers: { 'Range': 'bytes=0-2097152' } })
-                    .catch(() => {});
-            }
-        }
-
         function playNext() {
+            uiLog("执行 playNext()");
             if (!currentMediaList || currentMediaList.length === 0) return;
             const nextIndex = (currentIndex + 1) % currentMediaList.length;
             selectMedia(nextIndex);
         }
 
         function playPrev() {
+            uiLog("执行 playPrev()");
             if (!currentMediaList || currentMediaList.length === 0) return;
             const prevIndex = (currentIndex - 1 + currentMediaList.length) % currentMediaList.length;
             selectMedia(prevIndex);
@@ -157,6 +187,7 @@
             }
 
             if (art) {
+                uiLog(`切换媒体: URL索引 ${index}`);
                 art.switchUrl(media.url).then(() => {
                     art.title = media.title;
                     art.play();
@@ -171,12 +202,13 @@
                 return;
             }
 
+            uiLog("初始化 Artplayer 实例");
             art = new Artplayer({
                 container: '#artplayer',
                 url: media.url,
                 title: media.title,
-                volume: 1.0,       // 默认满音量
-                muted: false,      // 强制不静音，车机底层据此判断是否下发音频焦点
+                volume: 1.0,
+                muted: false,
                 autoplay: true,
                 autoSize: true,
                 fullscreen: true,
@@ -184,84 +216,29 @@
             });
 
             art.on('play', () => {
+                uiLog("[Player] 状态: Playing");
                 if (media.type === 'audio') audioDisk.classList.add('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
                 updatePositionState();
-                setupMediaSession(); // 确保每次播放时都激活控制权
+                setupMediaSession();
             });
 
             art.on('pause', () => {
+                uiLog("[Player] 状态: Paused");
                 audioDisk.classList.remove('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
                 updatePositionState();
             });
 
-            art.on('video:timeupdate', () => checkAndPreloadNext(art.currentTime));
-            art.on('video:ended', () => playNext());
+            art.on('video:ended', () => {
+                uiLog("[Player] 媒体播放结束，切下一首");
+                playNext();
+            });
 
             updateMediaSessionMetadata(media);
         }
 
-        function formatTime(seconds) {
-            const m = Math.floor(seconds / 60);
-            const s = Math.floor(seconds % 60);
-            return `${m}:${s < 10 ? '0' : ''}${s}`;
-        }
-
-        function initGestureControl() {
-            const playerSection = document.getElementById('playerSection');
-            const gestureHud = document.getElementById('gestureHud');
-
-            let touchStartX = 0, touchStartY = 0;
-            let initialTime = 0, targetTime = 0;
-            let isDragging = false;
-
-            playerSection.addEventListener('touchstart', (e) => {
-                if (e.touches.length > 1 || !art) return;
-                touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
-                initialTime = art.currentTime;
-                targetTime = initialTime;
-                isDragging = false;
-            }, { passive: false });
-
-            playerSection.addEventListener('touchmove', (e) => {
-                if (e.touches.length > 1 || !art) return;
-                const deltaX = e.touches[0].clientX - touchStartX;
-                const deltaY = e.touches[0].clientY - touchStartY;
-
-                if (!isDragging && Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
-                    isDragging = true;
-                }
-
-                if (isDragging) {
-                    e.preventDefault();
-                    const duration = art.duration || 1;
-                    const seekOffset = deltaX * 0.2;
-                    targetTime = Math.min(Math.max(0, initialTime + seekOffset), duration);
-                    gestureHud.innerText = `${seekOffset >= 0 ? '+' : ''}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
-                    gestureHud.style.display = 'block';
-                }
-            }, { passive: false });
-
-            playerSection.addEventListener('touchend', () => {
-                if (isDragging && art) {
-                    art.currentTime = targetTime;
-                    gestureHud.style.display = 'none';
-                    isDragging = false;
-                }
-            });
-
-            playerSection.addEventListener('touchcancel', () => {
-                if (isDragging) {
-                    gestureHud.style.display = 'none';
-                    isDragging = false;
-                }
-            });
-        }
-
         function selectMedia(index) {
-            // 无论从哪里触发（列表点击），都视为已通过用户验证，隐藏遮罩
             const overlay = document.getElementById('startOverlay');
             if (overlay) overlay.style.display = 'none';
             hasStarted = true;
@@ -281,13 +258,13 @@
         window.addEventListener('DOMContentLoaded', () => {
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
-                listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
+                listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">暂无数据</li>';
                 document.getElementById('startOverlay').style.display = 'none';
                 return;
             }
 
             listContainer.innerHTML = currentMediaList.map((item, index) => `
-                <li class="media-item ${index === 0 ? 'active' : ''}" onclick="selectMedia(${index})">
+                <li class="media-item ${index === 0 ? 'active' : ''}" onclick="selectMedia(${index})" style="pointer-events: auto;">
                     <img src="${item.cover}" alt="cover">
                     <div class="media-info">
                         <div class="media-title">${item.title}</div>
@@ -296,28 +273,34 @@
                 </li>
             `).join('');
 
-            initGestureControl();
-
-            // 监听启动遮罩点击，触发首次播放获取焦点
             document.getElementById('startOverlay').addEventListener('click', () => {
+                uiLog("用户点击遮罩，触发首次播放");
                 if (!hasStarted) {
                     selectMedia(0);
                 }
             });
         });
 
-        // 冗余物理按键拦截
+        // 物理按键强力捕获，查明车机究竟发送了什么信号量
         window.addEventListener('keydown', (e) => {
-            const key = e.key;
-            const code = e.code;
-            if (key === 'MediaTrackNext' || code === 'MediaTrackNext') {
+            // 排除掉修饰键和无用事件防止日志刷屏
+            if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+            uiLog(`[Key] 按下: key=${e.key} code=${e.code} keyCode=${e.keyCode}`);
+
+            if (e.key === 'MediaTrackNext' || e.code === 'MediaTrackNext') {
                 e.preventDefault();
                 playNext();
-            } else if (key === 'MediaTrackPrevious' || code === 'MediaTrackPrevious') {
+            } else if (e.key === 'MediaTrackPrevious' || e.code === 'MediaTrackPrevious') {
                 e.preventDefault();
                 playPrev();
             }
         }, true);
+
+        // 监听可见度改变（看车机系统是否在切歌时把你弄进后台了）
+        document.addEventListener("visibilitychange", () => {
+            uiLog(`[系统] 页面可见度改变: ${document.visibilityState}`);
+        });
+
     </script>
 </body>
 </html>
