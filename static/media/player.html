@@ -6,6 +6,7 @@
     <title>{{PAGE_TITLE}}</title>
     <style>
         * { box-sizing: border-box; }
+        /* 1. 修复：移除 body 上的 touch-action: none */
         body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; flex-direction: row-reverse; }
         .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
         .artplayer-app { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
@@ -15,6 +16,7 @@
         .rotate-disk { animation: rotate 20s linear infinite; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+        /* 2. 修复：侧边栏与媒体列表添加 touch-action: pan-y，允许原生流畅滚动 */
         .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; touch-action: pan-y; }
         .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }
         .back-btn { color: #888; text-decoration: none; font-size: 14px; }
@@ -32,21 +34,9 @@
         .media-artist { font-size: 12px; color: #888; }
 
         .gesture-hud { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.75); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; display: none; }
-
-        .start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; backdrop-filter: blur(10px); }
-        .start-overlay h2 { margin: 0; font-size: 28px; color: #fff; }
-        .start-overlay p { margin-top: 15px; font-size: 16px; color: #bbb; max-width: 80%; text-align: center; line-height: 1.5; }
-        .play-icon { width: 80px; height: 80px; fill: #3498db; margin-bottom: 20px; }
-
-        /* 调试面板 UI */
-        #debugPanel { position: fixed; top: 10px; right: 10px; width: 320px; height: 400px; background: rgba(0, 0, 0, 0.85); border: 1px solid #3498db; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; color: #0f0; overflow-y: auto; z-index: 10000; pointer-events: none; word-wrap: break-word; }
-        #debugPanel p { margin: 2px 0; border-bottom: 1px solid rgba(0,255,0,0.2); padding-bottom: 2px; }
     </style>
 </head>
 <body>
-    <!-- 调试面板 -->
-    <div id="debugPanel"></div>
-
     <div class="player-section" id="playerSection">
         <div id="audioCover" class="audio-cover-container">
             <div id="audioBlurBg" class="audio-blur-bg"></div>
@@ -54,83 +44,27 @@
         </div>
         <div id="artplayer" class="artplayer-app"></div>
         <div id="gestureHud" class="gesture-hud"></div>
-
-        <div id="startOverlay" class="start-overlay">
-            <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            <h2>点击屏幕开始播放</h2>
-            <p>由于车机系统安全限制，必须由您的真实点击触发播放</p>
-        </div>
     </div>
-
     <div class="sidebar">
         <div class="sidebar-header">
             <span>播放列表</span>
-            <a href="{{CATEGORY_LIST_URL}}" class="back-btn" style="pointer-events: auto;">← 返回分类</a>
+            <a href="{{CATEGORY_LIST_URL}}" class="back-btn">← 返回分类</a>
         </div>
         <div class="player-controls">
-            <button class="control-btn" onclick="playPrev()" style="pointer-events: auto;">⏮ 上一首</button>
-            <button class="control-btn" onclick="playNext()" style="pointer-events: auto;">下一首 ⏭</button>
+            <button class="control-btn" onclick="playPrev()">⏮ 上一首</button>
+            <button class="control-btn" onclick="playNext()">下一首 ⏭</button>
         </div>
         <ul id="mediaList" class="media-list"></ul>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.1.1/artplayer.js"></script>
     <script>
-        // --- 核心调试日志功能 ---
-        function uiLog(msg) {
-            const panel = document.getElementById('debugPanel');
-            if (!panel) return;
-            const time = new Date().toISOString().split('T')[1].slice(0, -1);
-            const p = document.createElement('p');
-            p.textContent = `[${time}] ${msg}`;
-            panel.appendChild(p);
-            panel.scrollTop = panel.scrollHeight; // 自动滚动到底部
-        }
-
-        // 拦截全局异常
-        window.addEventListener('error', (e) => {
-            uiLog(`[ERR] ${e.message}`);
-        });
-
-        uiLog("页面初始化完成, 监听已开启");
-        if ('mediaSession' in navigator) {
-            uiLog("浏览器支持 MediaSession API");
-        } else {
-            uiLog("[严重警告] 此浏览器不支持 MediaSession!");
-        }
-        // -----------------------
-
         let art = null;
         let currentIndex = 0;
         let isNextPreloaded = false;
         const currentMediaList = {{MEDIA_JSON}};
-        let hasStarted = false;
 
-        function setupMediaSession() {
-            if ('mediaSession' in navigator) {
-                const actions = [
-                    'play', 'pause', 'previoustrack', 'nexttrack',
-                    'seekbackward', 'seekforward'
-                ];
-
-                actions.forEach(action => {
-                    try {
-                        navigator.mediaSession.setActionHandler(action, () => {
-                            uiLog(`[MediaSession] 收到车机指令: ${action}`);
-                            if (action === 'previoustrack' || action === 'seekbackward') playPrev();
-                            if (action === 'nexttrack' || action === 'seekforward') playNext();
-                            if (action === 'play' && art) art.play();
-                            if (action === 'pause' && art) art.pause();
-                        });
-                        uiLog(`已绑定 MediaSession: ${action}`);
-                    } catch (e) {
-                        uiLog(`[WARN] 绑定 ${action} 失败`);
-                    }
-                });
-            }
-        }
-
-        function updateMediaSessionMetadata(media) {
+        function updateMediaSession(media) {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: media.title || '未知曲目',
@@ -140,31 +74,34 @@
                         { src: media.cover, sizes: '512x512', type: 'image/png' }
                     ]
                 });
-                uiLog(`[Meta] 更新媒体信息: ${media.title}`);
+
+                navigator.mediaSession.setActionHandler('play', () => { if (art) art.play(); });
+                navigator.mediaSession.setActionHandler('pause', () => { if (art) art.pause(); });
+                navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
+                navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
             }
         }
 
-        function updatePositionState() {
-            if ('mediaSession' in navigator && art && art.duration) {
-                try {
-                    navigator.mediaSession.setPositionState({
-                        duration: art.duration || 0,
-                        playbackRate: art.playbackRate || 1,
-                        position: art.currentTime || 0
-                    });
-                } catch (e) {}
+        /* 3. 新增：预加载下一首（命中网络/本地缓存） */
+        function checkAndPreloadNext(currentTime) {
+            if (currentTime >= 20 && !isNextPreloaded) {
+                isNextPreloaded = true;
+                if (!currentMediaList || currentMediaList.length <= 1) return;
+                const nextIndex = (currentIndex + 1) % currentMediaList.length;
+                const nextUrl = currentMediaList[nextIndex].url;
+
+                fetch(nextUrl, { method: 'GET', headers: { 'Range': 'bytes=0-2097152' } })
+                    .catch(() => {});
             }
         }
 
         function playNext() {
-            uiLog("执行 playNext()");
             if (!currentMediaList || currentMediaList.length === 0) return;
             const nextIndex = (currentIndex + 1) % currentMediaList.length;
             selectMedia(nextIndex);
         }
 
         function playPrev() {
-            uiLog("执行 playPrev()");
             if (!currentMediaList || currentMediaList.length === 0) return;
             const prevIndex = (currentIndex - 1 + currentMediaList.length) % currentMediaList.length;
             selectMedia(prevIndex);
@@ -187,28 +124,28 @@
             }
 
             if (art) {
-                uiLog(`切换媒体: URL索引 ${index}`);
                 art.switchUrl(media.url).then(() => {
                     art.title = media.title;
                     art.play();
-                    if (isAudio) audioDisk.classList.add('rotate-disk');
-                    else audioDisk.classList.remove('rotate-disk');
-                    updateMediaSessionMetadata(media);
+                    if (isAudio) {
+                        audioDisk.classList.add('rotate-disk');
+                    } else {
+                        audioDisk.classList.remove('rotate-disk');
+                    }
+                    updateMediaSession(media);
                 }).catch(() => {
                     art.url = media.url;
                     art.play();
-                    updateMediaSessionMetadata(media);
+                    updateMediaSession(media);
                 });
                 return;
             }
 
-            uiLog("初始化 Artplayer 实例");
             art = new Artplayer({
                 container: '#artplayer',
                 url: media.url,
                 title: media.title,
-                volume: 1.0,
-                muted: false,
+                volume: 0.7,
                 autoplay: true,
                 autoSize: true,
                 fullscreen: true,
@@ -216,55 +153,104 @@
             });
 
             art.on('play', () => {
-                uiLog("[Player] 状态: Playing");
                 if (media.type === 'audio') audioDisk.classList.add('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-                updatePositionState();
-                setupMediaSession();
             });
 
             art.on('pause', () => {
-                uiLog("[Player] 状态: Paused");
                 audioDisk.classList.remove('rotate-disk');
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-                updatePositionState();
+            });
+
+            art.on('video:timeupdate', () => {
+                checkAndPreloadNext(art.currentTime);
             });
 
             art.on('video:ended', () => {
-                uiLog("[Player] 媒体播放结束，切下一首");
                 playNext();
             });
 
-            updateMediaSessionMetadata(media);
+            updateMediaSession(media);
         }
 
-        function selectMedia(index) {
-            const overlay = document.getElementById('startOverlay');
-            if (overlay) overlay.style.display = 'none';
-            hasStarted = true;
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
 
-            const items = document.querySelectorAll('.media-item');
-            items.forEach(item => item.classList.remove('active'));
+        function initGestureControl() {
+            const playerSection = document.getElementById('playerSection');
+            const gestureHud = document.getElementById('gestureHud');
 
-            const targetElement = items[index];
-            if (targetElement) {
-                targetElement.classList.add('active');
-                targetElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            }
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let initialTime = 0;
+            let targetTime = 0;
+            let isDragging = false;
 
-            initPlayer(currentMediaList[index], index);
+            playerSection.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 1 || !art) return;
+
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                initialTime = art.currentTime;
+                targetTime = initialTime;
+                isDragging = false;
+            }, { passive: false });
+
+            playerSection.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 1 || !art) return;
+
+                const currentX = e.touches[0].clientX;
+                const currentY = e.touches[0].clientY;
+                const deltaX = currentX - touchStartX;
+                const deltaY = currentY - touchStartY;
+
+                if (!isDragging && Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                    isDragging = true;
+                }
+
+                if (isDragging) {
+                    e.preventDefault();
+
+                    const duration = art.duration || 1;
+                    const sensitivity = 0.2;
+                    const seekOffset = deltaX * sensitivity;
+
+                    targetTime = Math.min(Math.max(0, initialTime + seekOffset), duration);
+
+                    const sign = seekOffset >= 0 ? '+' : '';
+                    gestureHud.innerText = `${sign}${Math.round(seekOffset)}s (${formatTime(targetTime)} / ${formatTime(duration)})`;
+                    gestureHud.style.display = 'block';
+                }
+            }, { passive: false });
+
+            playerSection.addEventListener('touchend', (e) => {
+                if (isDragging) {
+                    if (art) art.currentTime = targetTime;
+                    gestureHud.style.display = 'none';
+                    isDragging = false;
+                }
+            });
+
+            playerSection.addEventListener('touchcancel', () => {
+                if (isDragging) {
+                    gestureHud.style.display = 'none';
+                    isDragging = false;
+                }
+            });
         }
 
         window.addEventListener('DOMContentLoaded', () => {
             const listContainer = document.getElementById('mediaList');
             if (currentMediaList.length === 0) {
-                listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">暂无数据</li>';
-                document.getElementById('startOverlay').style.display = 'none';
+                listContainer.innerHTML = '<li style="padding:20px;color:#666;text-align:center;">该分类下暂无媒体数据</li>';
                 return;
             }
 
             listContainer.innerHTML = currentMediaList.map((item, index) => `
-                <li class="media-item ${index === 0 ? 'active' : ''}" onclick="selectMedia(${index})" style="pointer-events: auto;">
+                <li class="media-item ${index === 0 ? 'active' : ''}" onclick="selectMedia(${index})">
                     <img src="${item.cover}" alt="cover">
                     <div class="media-info">
                         <div class="media-title">${item.title}</div>
@@ -273,34 +259,33 @@
                 </li>
             `).join('');
 
-            document.getElementById('startOverlay').addEventListener('click', () => {
-                uiLog("用户点击遮罩，触发首次播放");
-                if (!hasStarted) {
-                    selectMedia(0);
-                }
-            });
+            initPlayer(currentMediaList[0], 0);
+            initGestureControl();
         });
 
-        // 物理按键强力捕获，查明车机究竟发送了什么信号量
-        window.addEventListener('keydown', (e) => {
-            // 排除掉修饰键和无用事件防止日志刷屏
-            if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
-            uiLog(`[Key] 按下: key=${e.key} code=${e.code} keyCode=${e.keyCode}`);
+        function selectMedia(index) {
+            const items = document.querySelectorAll('.media-item');
+            items.forEach(item => item.classList.remove('active'));
 
-            if (e.key === 'MediaTrackNext' || e.code === 'MediaTrackNext') {
+            const targetElement = items[index];
+            if (targetElement) {
+                targetElement.classList.add('active');
+                /* 4. 修复：将 smooth 替换为 auto */
+                targetElement.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+            }
+
+            initPlayer(currentMediaList[index], index);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'MediaTrackNext' || e.code === 'MediaTrackNext') {
                 e.preventDefault();
                 playNext();
-            } else if (e.key === 'MediaTrackPrevious' || e.code === 'MediaTrackPrevious') {
+            } else if (e.key === 'ArrowLeft' || e.key === 'MediaTrackPrevious' || e.code === 'MediaTrackPrevious') {
                 e.preventDefault();
                 playPrev();
             }
-        }, true);
-
-        // 监听可见度改变（看车机系统是否在切歌时把你弄进后台了）
-        document.addEventListener("visibilitychange", () => {
-            uiLog(`[系统] 页面可见度改变: ${document.visibilityState}`);
         });
-
     </script>
 </body>
 </html>
