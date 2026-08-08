@@ -26,8 +26,8 @@ async def health_check():
 
 @router.post("/watermark")
 async def apply_watermark(
-        files: List[UploadFile] = File(...),
-        text: str = Query("内部资源_请勿外泄")
+        files: List[UploadFile] = File(..., description="上传的文件或压缩包"),
+        text: str = Query("内部资源_请勿外泄", description="水印文字")
 ):
     # 场景 1: 单文件上传
     if len(files) == 1:
