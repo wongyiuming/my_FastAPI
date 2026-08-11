@@ -6,7 +6,6 @@
     <title>{{PAGE_TITLE}}</title>
     <style>
         * { box-sizing: border-box; }
-        /* 1. 修复：移除 body 上的 touch-action: none */
         body { background-color: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; flex-direction: row-reverse; }
         .player-section { flex: 3; background: #000; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
         .artplayer-app { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
@@ -16,7 +15,6 @@
         .rotate-disk { animation: rotate 20s linear infinite; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-        /* 2. 修复：侧边栏与媒体列表添加 touch-action: pan-y，允许原生流畅滚动 */
         .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; touch-action: pan-y; }
         .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }
         .back-btn { color: #888; text-decoration: none; font-size: 14px; }
@@ -62,6 +60,7 @@
         let art = null;
         let currentIndex = 0;
         let isNextPreloaded = false;
+        let clickTimer = null;
         const currentMediaList = {{MEDIA_JSON}};
 
         function updateMediaSession(media) {
@@ -82,7 +81,6 @@
             }
         }
 
-        /* 3. 新增：预加载下一首（命中网络/本地缓存） */
         function checkAndPreloadNext(currentTime) {
             if (currentTime >= 20 && !isNextPreloaded) {
                 isNextPreloaded = true;
@@ -240,6 +238,21 @@
                     isDragging = false;
                 }
             });
+
+            playerSection.addEventListener('click', (e) => {
+                if (e.target.closest('.sidebar') || e.target.closest('.artplayer-control')) return;
+
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    playPrev();
+                } else {
+                    clickTimer = setTimeout(() => {
+                        clickTimer = null;
+                        playNext();
+                    }, 250);
+                }
+            });
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -270,7 +283,6 @@
             const targetElement = items[index];
             if (targetElement) {
                 targetElement.classList.add('active');
-                /* 4. 修复：将 smooth 替换为 auto */
                 targetElement.scrollIntoView({ block: 'nearest', behavior: 'auto' });
             }
 
