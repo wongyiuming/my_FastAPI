@@ -5,8 +5,8 @@ services:
     container_name: office_automation_web
     restart: always
     env_file: .env
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       - redis
     volumes:
@@ -22,6 +22,23 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+
+  # Nginx 服务
+  nginx:
+    build: ./nginx
+    container_name: office_automation_nginx
+    restart: always
+    environment:
+      - SERVER_NAME=${SERVER_NAME}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./static:/app/static:ro
+      - ${SSL_CERT_PATH}:/etc/nginx/certs/fullchain.pem:ro
+      - ${SSL_KEY_PATH}:/etc/nginx/certs/privkey.pem:ro
+    depends_on:
+      - web
 
 volumes:
   redis_data:
