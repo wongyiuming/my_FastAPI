@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
 base_folder = MEDIA_DIR
 
-FFMPEG_PATH = r'C:\ffmpeg\bin'
+FFMPEG_PATH = r"C:\Program Files\ffmpeg-2024-11-28-git-bc991ca048-full_build\bin"
 RAW_REQUEST_DATA = {
     'headers': {
         'accept': 'text/css,*/*;q=0.1',
