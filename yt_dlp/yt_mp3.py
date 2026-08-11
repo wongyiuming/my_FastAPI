@@ -4,7 +4,7 @@ import yt_dlp
 channel_url = 'https://www.youtube.com/@%E7%BE%BD%E6%B1%9F-f4k/playlists'
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEDIA_DIR = os.path.join(BASE_DIR, "data", "media")
-FFMPEG_PATH = r"C:\ffmpeg\bin"
+FFMPEG_PATH = r"C:\Program Files\ffmpeg-2024-11-28-git-bc991ca048-full_build\bin"
 NODE_EXECUTABLE_PATH = r"C:\Program Files\nodejs\node.exe"
 
 os.makedirs(MEDIA_DIR, exist_ok=True)
