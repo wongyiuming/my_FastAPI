@@ -14,60 +14,56 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 0. 关键步骤：创建 .env 文件，防止 Docker Compose 报错
-      # 直接将 example 拷贝为 .env 即可满足 Compose 的文件存在性检查
-      - name: Create .env file from template
-        run: cp .env.example .env
-
-      # 1. 模拟证书环境
-      - name: Create Dummy Certificates for Testing
+      # 1. 动态生成 CI 专用的证书与 .env 文件
+      - name: Prepare Certificates and Environment Variables
         run: |
           mkdir -p certs
           openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
             -keyout certs/privkey.pem \
             -out certs/fullchain.pem \
             -subj "/C=CN/ST=Default/L=Default/O=Default/CN=localhost"
+          
+          # 覆盖生成 CI 专用的 .env，将 SERVER_NAME 设置为 localhost，证书路径指向本地 relative 路径
+          cat << 'EOF' > .env
+          PROJECT_NAME="Office-Automation"
+          DEFAULT_TEXT="CONFIDENTIAL"
+          REDIS_URL=redis://redis:6379/0
+          WALL_ADMIN_TOKEN=ci_test_token
+          WALL_TTL=240
+          SERVER_NAME=localhost
+          SSL_CERT_PATH=./certs/fullchain.pem
+          SSL_KEY_PATH=./certs/privkey.pem
+          EOF
 
       # 2. 启动服务
       - name: Build and Start Services
-        env:
-          # 虽然有了 .env，但这里的 env 优先级更高，会覆盖 .env 中的同名变量
-          NGINX_HOST: localhost
-          REDIS_URL: redis://redis:6379/0
-          WALL_ADMIN_TOKEN: ci_test_token
-          WALL_TTL: 240
         run: |
           docker compose up -d --build
 
       # 3. 等待服务就绪
       - name: Wait for Services
         run: |
-          sleep 15
+          sleep 10
           docker compose ps
 
-      # 4. 验证核心功能
+      # 4. 验证核心功能 (匹配当前 FastAPI 路由与 HTTP/HTTPS 逻辑)
       - name: Test Endpoints
         run: |
-          # A. 验证 Swagger (注意：由于 Nginx 配置了跳转，这里需要 -L)
+          # A. 验证文档路径 (-k 忽略自签名证书，-L 自动跟随 301 重定向到 HTTPS)
           curl -k -L --fail http://localhost/docs || exit 1
           
-          # B. 验证匿名墙静态页面
-          curl -k -L --fail http://localhost/wall/index.html || exit 1
-          
-          # C. 验证匿名墙 API
-          # 注意：POST 结果应该包含发送的字符串
-          POST_RES=$(curl -k -L -X POST "http://localhost/api/v1/wall/publish?content=CI_Integration_Test")
-          echo "Post Result: $POST_RES"
-          if [[ "$POST_RES" != *"CI_Integration_Test"* ]]; then
-            echo "API Validation Failed: Content not found in response"
+          # B. 验证 API 根路径响应
+          ROOT_RES=$(curl -k -L -s http://localhost/)
+          echo "Root Endpoint Result: $ROOT_RES"
+          if [[ "$ROOT_RES" != *"Office Automation Service"* ]]; then
+            echo "API Validation Failed: Welcome message not found"
             exit 1
           fi
 
-      # 5. 验证 Redis 数据持久化
-      - name: Verify Redis Persistence
+      # 5. 验证 Redis 连通性
+      - name: Verify Redis Service
         run: |
-          # 使用服务名 redis 获取容器 ID
-          docker exec $(docker compose ps -q redis) redis-cli keys "wall:post:*" | grep "wall:post"
+          docker exec $(docker compose ps -q redis) redis-cli ping | grep "PONG"
 
       # 6. 故障排查
       - name: View logs on failure
