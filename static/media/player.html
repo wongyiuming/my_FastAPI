@@ -289,6 +289,8 @@
                     if (art) art.currentTime = targetTime;
                     gestureHud.style.display = 'none';
                     isDragging = false;
+                    // 防止拖动结束后触发误触 click 事件
+                    if (e.cancelable) e.preventDefault();
                 }
             });
 
@@ -299,20 +301,45 @@
                 }
             });
 
+            // 【新增】：使用捕获阶段拦截双击，防止 Artplayer 触发原生双击全屏
+            playerSection.addEventListener('dblclick', (e) => {
+                // 如果点击的是控制栏或侧边栏，则不拦截，放行原生行为
+                const isControl = e.target.closest('.sidebar') ||
+                                  e.target.closest('.art-bottom') ||
+                                  e.target.closest('.art-controls') ||
+                                  e.target.closest('.art-setting') ||
+                                  e.target.closest('.art-contextmenu');
+                if (isControl) return;
+
+                // 强制阻止事件冒泡到 Artplayer 的监听器
+                e.stopPropagation();
+                e.preventDefault();
+            }, true);
+
+            // 【修改】：使用捕获阶段拦截单击，防止 Artplayer 触发原生播放/暂停
             playerSection.addEventListener('click', (e) => {
-                if (e.target.closest('.sidebar') || e.target.closest('.artplayer-control')) return;
+                const isControl = e.target.closest('.sidebar') ||
+                                  e.target.closest('.art-bottom') ||
+                                  e.target.closest('.art-controls') ||
+                                  e.target.closest('.art-setting') ||
+                                  e.target.closest('.art-contextmenu');
+                if (isControl) return;
+
+                // 强制阻止事件冒泡到 Artplayer 的监听器
+                e.stopPropagation();
+                e.preventDefault();
 
                 if (clickTimer) {
                     clearTimeout(clickTimer);
                     clickTimer = null;
-                    playPrev();
+                    playPrev(); // 双击逻辑
                 } else {
                     clickTimer = setTimeout(() => {
                         clickTimer = null;
-                        playNext();
+                        playNext(); // 单击逻辑
                     }, 250);
                 }
-            });
+            }, true); // 注意这里的 true，表示在事件捕获阶段执行
         }
 
         window.addEventListener('DOMContentLoaded', () => {
