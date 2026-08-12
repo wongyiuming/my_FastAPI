@@ -81,7 +81,8 @@ def load_html_template(filename: str) -> str:
 @router.get("/stream")
 async def stream_media_file(file_path: str = Query(...)):
     safe_path = os.path.normpath(os.path.join(MEDIA_DIR, file_path))
-    if not safe_path.startswith(os.path.normpath(MEDIA_DIR)) or not os.path.exists(safe_path):
+    # 将 os.path.exists 改为 os.path.isfile，排除目录路径
+    if not safe_path.startswith(os.path.normpath(MEDIA_DIR)) or not os.path.isfile(safe_path):
         raise HTTPException(status_code=404, detail="Media file not found")
 
     # 包含 Range 支持和协商/客户端缓存 Response

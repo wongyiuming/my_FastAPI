@@ -15,6 +15,35 @@
         .rotate-disk { animation: rotate 20s linear infinite; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+        /* 四角炫彩打字效果样式 */
+        .corner-text {
+            position: absolute;
+            font-size: min(45vh, 360px);
+            font-weight: 900;
+            z-index: 5;
+            pointer-events: none;
+            user-select: none;
+            background: linear-gradient(135deg, #ff0055, #ff5e00, #ffb700, #00e5ff, #9d00ff, #ff0055);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            animation: gradientShift 6s ease infinite;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2));
+            line-height: 1;
+        }
+        .corner-tl { top: 6%; left: 8%; }
+        .corner-tr { top: 6%; right: 8%; }
+        .corner-bl { bottom: 6%; left: 8%; }
+        .corner-br { bottom: 6%; right: 8%; }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
         .sidebar { flex: 1; min-width: 280px; background: #181818; border-right: 1px solid #282828; display: flex; flex-direction: column; z-index: 10; touch-action: pan-y; }
         .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #282828; display: flex; justify-content: space-between; align-items: center; background: #181818; }
         .back-btn { color: #888; text-decoration: none; font-size: 14px; }
@@ -36,6 +65,11 @@
 </head>
 <body>
     <div class="player-section" id="playerSection">
+        <div id="cornerTL" class="corner-text corner-tl"></div>
+        <div id="cornerTR" class="corner-text corner-tr"></div>
+        <div id="cornerBL" class="corner-text corner-bl"></div>
+        <div id="cornerBR" class="corner-text corner-br"></div>
+
         <div id="audioCover" class="audio-cover-container">
             <div id="audioBlurBg" class="audio-blur-bg"></div>
             <div id="audioDisk" class="audio-disk"></div>
@@ -62,6 +96,32 @@
         let isNextPreloaded = false;
         let clickTimer = null;
         const currentMediaList = {{MEDIA_JSON}};
+
+        function initCornerTyping() {
+            const config = [
+                { id: 'cornerTL', text: '中', delay: 0 },
+                { id: 'cornerTR', text: '国', delay: 250 },
+                { id: 'cornerBL', text: '爱', delay: 500 },
+                { id: 'cornerBR', text: '我', delay: 750 }
+            ];
+
+            config.forEach(item => {
+                const el = document.getElementById(item.id);
+                if (!el) return;
+                el.innerText = '';
+                setTimeout(() => {
+                    let index = 0;
+                    const timer = setInterval(() => {
+                        if (index < item.text.length) {
+                            el.innerText += item.text.charAt(index);
+                            index++;
+                        } else {
+                            clearInterval(timer);
+                        }
+                    }, 150);
+                }, item.delay);
+            });
+        }
 
         function updateMediaSession(media) {
             if ('mediaSession' in navigator) {
@@ -274,6 +334,7 @@
 
             initPlayer(currentMediaList[0], 0);
             initGestureControl();
+            initCornerTyping();
         });
 
         function selectMedia(index) {
