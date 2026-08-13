@@ -57,7 +57,7 @@ def _scan_media_files_by_category_sync(category_subpath, valid_exts, media_type)
 
                     media_list.append({
                         "title": os.path.splitext(file)[0],
-                        "artist": "私有云端",
+                        "artist": "__前沿__",
                         "type": media_type,
                         "url": f"/api/v1/media/stream?file_path={url_friendly_path}",
                         "cover": "/favicon.ico"

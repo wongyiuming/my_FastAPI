@@ -79,7 +79,7 @@
     </div>
     <div class="sidebar">
         <div class="sidebar-header">
-            <span>播放列表</span>
+            <span>四大发明</span>
             <a href="{{CATEGORY_LIST_URL}}" class="back-btn">← 返回分类</a>
         </div>
         <div class="player-controls">
@@ -127,7 +127,7 @@
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: media.title || '未知曲目',
-                    artist: media.artist || '私有云端',
+                    artist: media.artist || '前沿',
                     album: '{{PAGE_TITLE}}',
                     artwork: [
                         { src: media.cover, sizes: '512x512', type: 'image/png' }
